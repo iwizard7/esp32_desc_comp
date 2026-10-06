@@ -271,6 +271,20 @@ static int wttrCode(int code) {
   return 3;
 }
 
+static String localTime24(const char* value) {
+  String s(value ? value : "");
+  s.trim();
+  if (s.length() < 7) return s;
+  int hour = s.substring(0, 2).toInt();
+  int minute = s.substring(3, 5).toInt();
+  bool pm = s.endsWith("PM");
+  if (s.endsWith("AM") && hour == 12) hour = 0;
+  if (pm && hour < 12) hour += 12;
+  char result[6];
+  snprintf(result, sizeof(result), "%02d:%02d", hour, minute);
+  return String(result);
+}
+
 bool fetchWeather() {
   Serial.printf("[WX] Fetch weather for lat=%.4f lon=%.4f\n", settings.lat, settings.lon);
   if (settings.lat == 0 && settings.lon == 0) {
@@ -328,8 +342,8 @@ bool fetchWeather() {
   weather.rainMm = atof(current["precipMM"] | "0");
   JsonArray astronomy = today["astronomy"].as<JsonArray>();
   if (!astronomy.isNull() && astronomy.size() > 0) {
-    weather.sunrise = astronomy[0]["sunrise"] | "";
-    weather.sunset = astronomy[0]["sunset"] | "";
+    weather.sunrise = localTime24(astronomy[0]["sunrise"] | "");
+    weather.sunset = localTime24(astronomy[0]["sunset"] | "");
   }
   weather.rainInMin = -1;
   weather.ok = true;

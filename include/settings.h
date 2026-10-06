@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#define FW_VERSION "0.5.0"
+#define FW_VERSION "0.6.0"
 
 #define SLIDE_CLOCK 0
 #define SLIDE_WEATHER 1

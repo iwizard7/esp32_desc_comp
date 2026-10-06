@@ -39,6 +39,27 @@ static const char* monRu(int mon) {
   return m[mon];
 }
 
+static String fitText(const String& input, uint16_t maxWidth) {
+  String out = input;
+  while (out.length() && u8g2.getUTF8Width(out.c_str()) > maxWidth) {
+    int cut = out.length() - 1;
+    while (cut > 0 && (((uint8_t)out[cut] & 0xC0) == 0x80)) cut--;
+    out.remove(cut);
+  }
+  return out;
+}
+
+static void drawCentered(const String& text, int y) {
+  int width = u8g2.getUTF8Width(text.c_str());
+  int x = (128 - width) / 2;
+  if (x < 0) x = 0;
+  u8g2.drawUTF8(x, y, text.c_str());
+}
+
+static String shortCity() {
+  return fitText(settings.cityLabel.length() ? settings.cityLabel : settings.city, 48);
+}
+
 void displayBegin() {
   Wire.begin(PIN_SDA, PIN_SCL);
   u8g2.setI2CAddress(OLED_ADDR << 1);
@@ -60,9 +81,9 @@ void displaySetContrast(uint8_t contrast) {
 void displayMessage(const char* line1, const char* line2, const char* line3) {
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_6x12_t_cyrillic);
-  if (line1 && line1[0]) u8g2.drawUTF8(0, 10, line1);
-  if (line2 && line2[0]) u8g2.drawUTF8(0, 21, line2);
-  if (line3 && line3[0]) u8g2.drawUTF8(0, 32, line3);
+  if (line1 && line1[0]) u8g2.drawUTF8(0, 10, fitText(line1, 128).c_str());
+  if (line2 && line2[0]) u8g2.drawUTF8(0, 21, fitText(line2, 128).c_str());
+  if (line3 && line3[0]) u8g2.drawUTF8(0, 32, fitText(line3, 128).c_str());
        u8g2.sendBuffer();
 }
 
@@ -92,7 +113,7 @@ void displayClock() {
     char hm[8];
     snprintf(hm, sizeof(hm), "%02d:%02d", t.tm_hour, t.tm_min);
     u8g2.setFont(u8g2_font_logisoso24_tn);
-    u8g2.drawStr(0, 24, hm);
+    drawCentered(hm, 24);
     char line[40];
     snprintf(line, sizeof(line), "%s %d %s", wdRu(t.tm_wday), t.tm_mday, monRu(t.tm_mon));
     u8g2.setFont(u8g2_font_6x12_t_cyrillic);
@@ -113,11 +134,13 @@ void displayWeather() {
     u8g2.setFont(u8g2_font_logisoso16_tr);
     u8g2.drawStr(0, 18, t);
     u8g2.setFont(u8g2_font_6x12_t_cyrillic);
-     u8g2.drawUTF8(56, 12, wmoShortLabel(weather.code));
+    String condition = wmoShortLabel(weather.code);
+    u8g2.drawUTF8(56, 12, fitText(condition, 72).c_str());
+    String city = shortCity();
     char sub[40];
-    snprintf(sub, sizeof(sub), "%s  %d%%  %.0fм/с", settings.cityLabel.c_str(),
+    snprintf(sub, sizeof(sub), "%s  %d%%  %.0fм/с", city.c_str(),
              (int)weather.humidity, weather.wind);
-    u8g2.drawUTF8(0, 32, sub);
+    u8g2.drawUTF8(0, 32, fitText(sub, 128).c_str());
   }
   sendDisplayBuffer();
 }
@@ -128,12 +151,15 @@ void displayForecast() {
   if (!weather.ok) {
     u8g2.drawUTF8(0, 20, "Нет прогноза");
   } else {
-    u8g2.drawUTF8(0, 10, "Сегодня");
     char line[40];
-    snprintf(line, sizeof(line), "мин %+.0f°  макс %+.0f°", weather.tmin, weather.tmax);
-    u8g2.drawUTF8(0, 21, line);
-    snprintf(line, sizeof(line), "осадки %d%% %.1fмм", weather.precipProb, weather.rainMm);
-    u8g2.drawUTF8(0, 32, line);
+    snprintf(line, sizeof(line), "Сегодня %+.0f...%+.0f°", weather.tmin, weather.tmax);
+    u8g2.drawUTF8(0, 13, fitText(line, 128).c_str());
+    if (weather.precipProb == 0 && weather.rainMm < 0.05f) {
+      u8g2.drawUTF8(0, 29, "Без дождя");
+    } else {
+      snprintf(line, sizeof(line), "Дождь %d%%  %.1fмм", weather.precipProb, weather.rainMm);
+      u8g2.drawUTF8(0, 29, fitText(line, 128).c_str());
+    }
   }
   sendDisplayBuffer();
 }
@@ -146,9 +172,9 @@ void displayRates() {
      u8g2.drawUTF8(0, 28, ratesError.c_str());
   } else {
     char a[24], b[24], c[24];
-    snprintf(a, sizeof(a), "USD  %.2f", rates.usd);
-    snprintf(b, sizeof(b), "EUR  %.2f", rates.eur);
-    snprintf(c, sizeof(c), "CNY  %.2f", rates.cny);
+     snprintf(a, sizeof(a), "USD  %.2f", rates.usd);
+     snprintf(b, sizeof(b), "EUR  %.2f", rates.eur);
+     snprintf(c, sizeof(c), "CNY  %.2f", rates.cny);
     u8g2.drawUTF8(0, 10, a);
     u8g2.drawUTF8(0, 21, b);
     u8g2.drawUTF8(0, 32, c);
@@ -172,9 +198,9 @@ void displayAir() {
     u8g2.drawUTF8(0, 20, "Нет AQI");
   } else {
     char line[40];
-    snprintf(line, sizeof(line), "AQI %.0f  %s", air.aqi, aqiHint(air.aqi));
+     snprintf(line, sizeof(line), "AQI %.0f  %s", air.aqi, aqiHint(air.aqi));
     u8g2.drawUTF8(0, 12, line);
-    snprintf(line, sizeof(line), "PM2.5  %.1f ug/m3", air.pm25);
+     snprintf(line, sizeof(line), "PM2.5  %.1f мкг/м3", air.pm25);
     u8g2.drawUTF8(0, 26, line);
   }
   sendDisplayBuffer();
@@ -188,14 +214,14 @@ void displaySun() {
   localtime_r(&now, &t);
   char line[48];
   if (weather.ok) {
-    snprintf(line, sizeof(line), "восход %s", weather.sunrise.c_str());
-    u8g2.drawUTF8(0, 10, line);
-    snprintf(line, sizeof(line), "закат  %s", weather.sunset.c_str());
-    u8g2.drawUTF8(0, 21, line);
+     snprintf(line, sizeof(line), "Восход  %s", weather.sunrise.c_str());
+     u8g2.drawUTF8(0, 12, line);
+     snprintf(line, sizeof(line), "Закат   %s", weather.sunset.c_str());
+     u8g2.drawUTF8(0, 27, line);
   } else {
     u8g2.drawUTF8(0, 14, "нет солнца");
   }
-  u8g2.drawUTF8(0, 32, settings.cityLabel.c_str());
+   u8g2.drawUTF8(0, 32, shortCity().c_str());
   sendDisplayBuffer();
 }
 
