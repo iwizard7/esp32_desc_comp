@@ -17,6 +17,7 @@ static bool pausedRotation = false;
 static TaskHandle_t fetchTaskHandle = nullptr;
 static volatile bool bgFetchPending = false;
 static volatile bool bgFetchForce = false;
+static volatile bool bgFetchGeocode = false;
 
 static void ntpSync() {
   applyTimezone();
@@ -28,8 +29,9 @@ static void backgroundFetchTask(void* param) {
     if (bgFetchPending && WiFi.status() == WL_CONNECTED) {
       bgFetchPending = false;
       ntpSync();
-      fetchAllData(bgFetchForce);
+      fetchAllData(bgFetchForce, bgFetchGeocode);
       bgFetchForce = false;
+      bgFetchGeocode = false;
       if (settings.bmeEnabled) {
         bmePoll();
       }
@@ -40,9 +42,10 @@ static void backgroundFetchTask(void* param) {
   }
 }
 
-static void triggerAsyncFetch(bool force = false) {
+static void triggerAsyncFetch(bool force = false, bool reGeocode = false) {
   bgFetchPending = true;
   if (force) bgFetchForce = true;
+  if (reGeocode) bgFetchGeocode = true;
 }
 
 static void startSta() {
@@ -69,7 +72,7 @@ static void enterAp(const char* why) {
 static void afterOnline() {
   portalBeginSta();
   connecting = false;
-       triggerAsyncFetch(true);
+       triggerAsyncFetch(true, true);
   displayRebuildPlaylist();
   lastSlideMs = millis();
 }

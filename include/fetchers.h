@@ -17,6 +17,7 @@ struct WeatherData {
   float rainMm;
   int rainProb;
   uint32_t fetchedAt;
+  uint32_t cachedAt;
 };
 
 struct AirData {
@@ -24,6 +25,7 @@ struct AirData {
   float aqi;
   float pm25;
   uint32_t fetchedAt;
+  uint32_t cachedAt;
 };
 
 struct RatesData {
@@ -33,6 +35,7 @@ struct RatesData {
   float cny;
   String date;
   uint32_t fetchedAt;
+  uint32_t cachedAt;
 };
 
 extern WeatherData weather;
@@ -48,7 +51,7 @@ bool geocodeCity(const String& city);
 bool fetchWeather();
 bool fetchAir();
 bool fetchRates();
-bool fetchAllData(bool force = false);
+bool fetchAllData(bool force = false, bool reGeocode = false);
 void dataCacheLoad();
 void applyTimezone();
 bool isNightNow();

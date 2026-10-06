@@ -35,6 +35,7 @@ static void cacheWeather() {
   p.putFloat("rain", weather.rainMm);
   p.putString("rise", weather.sunrise);
   p.putString("set", weather.sunset);
+  p.putUInt("stamp", weather.cachedAt);
   p.end();
 }
 
@@ -44,6 +45,7 @@ static void cacheAir() {
   p.putBool("air_ok", air.ok);
   p.putFloat("aqi", air.aqi);
   p.putFloat("pm25", air.pm25);
+  p.putUInt("air_stamp", air.cachedAt);
   p.end();
 }
 
@@ -55,6 +57,7 @@ static void cacheRates() {
   p.putFloat("eur", rates.eur);
   p.putFloat("cny", rates.cny);
   p.putString("rdate", rates.date);
+  p.putUInt("rates_stamp", rates.cachedAt);
   p.end();
 }
 
@@ -72,14 +75,17 @@ void dataCacheLoad() {
   weather.rainMm = p.getFloat("rain", 0);
   weather.sunrise = p.getString("rise", "");
   weather.sunset = p.getString("set", "");
+  weather.cachedAt = p.getUInt("stamp", 0);
   air.ok = p.getBool("air_ok", false);
   air.aqi = p.getFloat("aqi", 0);
   air.pm25 = p.getFloat("pm25", 0);
+  air.cachedAt = p.getUInt("air_stamp", 0);
   rates.ok = p.getBool("rates_ok", false);
   rates.usd = p.getFloat("usd", 0);
   rates.eur = p.getFloat("eur", 0);
   rates.cny = p.getFloat("cny", 0);
   rates.date = p.getString("rdate", "");
+  rates.cachedAt = p.getUInt("rates_stamp", 0);
   p.end();
   weather.fetchedAt = 0;
   air.fetchedAt = 0;
@@ -313,8 +319,10 @@ bool fetchWeather() {
   filter["weather"][0]["maxtempC"] = true;
   filter["weather"][0]["astronomy"][0]["sunrise"] = true;
   filter["weather"][0]["astronomy"][0]["sunset"] = true;
-  filter["weather"][0]["hourly"][0]["chanceofrain"] = true;
-  filter["weather"][0]["hourly"][0]["precipMM"] = true;
+  for (int i = 0; i < 8; i++) {
+    filter["weather"][0]["hourly"][i]["chanceofrain"] = true;
+    filter["weather"][0]["hourly"][i]["precipMM"] = true;
+  }
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, body, DeserializationOption::Filter(filter));
   if (err) {
@@ -338,8 +346,14 @@ bool fetchWeather() {
   JsonObject today = days[0];
   weather.tmin = atof(today["mintempC"] | "0");
   weather.tmax = atof(today["maxtempC"] | "0");
-  weather.precipProb = atoi(today["hourly"][0]["chanceofrain"] | "0");
-  weather.rainMm = atof(current["precipMM"] | "0");
+  weather.precipProb = 0;
+  weather.rainMm = 0.0f;
+  JsonArray hours = today["hourly"].as<JsonArray>();
+  for (JsonObject hour : hours) {
+    int probability = atoi(hour["chanceofrain"] | "0");
+    if (probability > weather.precipProb) weather.precipProb = probability;
+    weather.rainMm += atof(hour["precipMM"] | "0");
+  }
   JsonArray astronomy = today["astronomy"].as<JsonArray>();
   if (!astronomy.isNull() && astronomy.size() > 0) {
     weather.sunrise = localTime24(astronomy[0]["sunrise"] | "");
@@ -348,6 +362,7 @@ bool fetchWeather() {
   weather.rainInMin = -1;
   weather.ok = true;
   weather.fetchedAt = millis();
+  weather.cachedAt = time(nullptr) > 100000 ? (uint32_t)time(nullptr) : 0;
   cacheWeather();
   weatherError = "";
   Serial.printf("[WX] wttr OK: temp=%.1f humidity=%.0f wind=%.1f rain=%.1f\n",
@@ -388,6 +403,7 @@ bool fetchAir() {
   air.pm25 = doc["current"]["pm2_5"] | 0.0f;
   air.ok = true;
   air.fetchedAt = millis();
+  air.cachedAt = time(nullptr) > 100000 ? (uint32_t)time(nullptr) : 0;
   cacheAir();
   airError = "";
   Serial.printf("[AQI] OK: AQI=%.0f PM2.5=%.1f\n", air.aqi, air.pm25);
@@ -433,12 +449,13 @@ bool fetchRates() {
   if (rates.date.length() >= 10) rates.date = rates.date.substring(0, 10);
   rates.ok = true;
   rates.fetchedAt = millis();
+  rates.cachedAt = time(nullptr) > 100000 ? (uint32_t)time(nullptr) : 0;
   cacheRates();
   ratesError = "";
   return true;
 }
 
-bool fetchAllData(bool force) {
+bool fetchAllData(bool force, bool reGeocode) {
   uint32_t now = millis();
   if (!force && (int32_t)(now - nextFetchAllowedMs) < 0) return false;
   if (!fetchMutex) fetchMutex = xSemaphoreCreateMutex();
@@ -448,7 +465,7 @@ bool fetchAllData(bool force) {
   }
 
   bool ok = true;
-  if (settings.city.length() && !geocodeCity(settings.city)) ok = false;
+  if (reGeocode && settings.city.length() && !geocodeCity(settings.city)) ok = false;
   settingsSave();
   if (!fetchWeather()) ok = false;
   if (!fetchAir()) ok = false;

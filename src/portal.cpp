@@ -38,8 +38,9 @@ static bool authorized() {
 }
 
 static long dataAgeSeconds(uint32_t fetchedAt) {
-  if (fetchedAt == 0) return -1;
-  return (long)((millis() - fetchedAt) / 1000UL);
+  time_t now = time(nullptr);
+  if (fetchedAt == 0 || now < 100000 || (uint32_t)now < fetchedAt) return -1;
+  return (long)((uint32_t)now - fetchedAt);
 }
 
 static String scanOptions() {
@@ -283,7 +284,7 @@ static void handleSave() {
   displayMessage("Сохранено", "геокод города...", settings.city.c_str());
 
   if (WiFi.status() == WL_CONNECTED) {
-    fetchAllData(true);
+    fetchAllData(true, true);
   }
 
   server.send(200, "text/html; charset=utf-8",
@@ -362,7 +363,6 @@ static void handleApiStatus() {
   s += "\"cityLabel\":\"" + htmlEscape(settings.cityLabel) + "\",";
   s += "\"lat\":" + String(settings.lat, 4) + ",";
   s += "\"lon\":" + String(settings.lon, 4) + ",";
-  s += "\"utcOffset\":" + String(settings.utcOffset) + ",";
   s += "\"timezone\":\"" + htmlEscape(settings.timezone) + "\",";
   s += "\"wx_ok\":" + String(weather.ok ? "true" : "false") + ",";
   s += "\"wx_temp\":" + String(weather.temp, 1) + ",";
@@ -374,17 +374,17 @@ static void handleApiStatus() {
   s += "\"wx_precip\":" + String(weather.precipProb) + ",";
   s += "\"wx_sunrise\":\"" + weather.sunrise + "\",";
   s += "\"wx_sunset\":\"" + weather.sunset + "\",";
-  s += "\"wx_age\":" + String(dataAgeSeconds(weather.fetchedAt)) + ",";
+  s += "\"wx_age\":" + String(dataAgeSeconds(weather.cachedAt)) + ",";
   s += "\"air_ok\":" + String(air.ok ? "true" : "false") + ",";
   s += "\"air_aqi\":" + String(air.aqi, 0) + ",";
   s += "\"air_pm25\":" + String(air.pm25, 1) + ",";
-  s += "\"air_age\":" + String(dataAgeSeconds(air.fetchedAt)) + ",";
+  s += "\"air_age\":" + String(dataAgeSeconds(air.cachedAt)) + ",";
   s += "\"rates_ok\":" + String(rates.ok ? "true" : "false") + ",";
   s += "\"rates_usd\":" + String(rates.usd, 2) + ",";
   s += "\"rates_eur\":" + String(rates.eur, 2) + ",";
   s += "\"rates_cny\":" + String(rates.cny, 2) + ",";
   s += "\"rates_date\":\"" + rates.date + "\",";
-  s += "\"rates_age\":" + String(dataAgeSeconds(rates.fetchedAt)) + ",";
+  s += "\"rates_age\":" + String(dataAgeSeconds(rates.cachedAt)) + ",";
   s += "\"weatherError\":\"" + htmlEscape(weatherError) + "\",";
   s += "\"airError\":\"" + htmlEscape(airError) + "\",";
   s += "\"ratesError\":\"" + htmlEscape(ratesError) + "\",";
@@ -450,7 +450,7 @@ static void handleDiag() {
     "    g+=row('Город',d.cityLabel||d.city);"
     "    g+=row('Широта','<span class='+(d.lat!==0?'ok':'err')+'>'+d.lat+'</span>');"
     "    g+=row('Долгота','<span class='+(d.lon!==0?'ok':'err')+'>'+d.lon+'</span>');"
-    "    g+=row('UTC offset',d.utcOffset+'s (UTC+'+(d.utcOffset/3600)+'h)');"
+    "    g+=row('Часовой пояс',d.timezone||'—');"
     "    g+='</div>';"
     "    g+='<div class=card><h2>&#9925; Погода</h2>';"
     "    g+=row('Статус',badge(d.wx_ok));"
@@ -505,7 +505,7 @@ static void handleDiag() {
 
 static void handleApiFetch() {
   if (!authorized()) return;
-  fetchAllData(true);
+  fetchAllData(true, false);
   handleApiStatus();
 }
 
