@@ -193,15 +193,21 @@ static const char* aqiHint(float aqi) {
 
 void displayAir() {
   u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_6x12_t_cyrillic);
   if (!air.ok) {
+    u8g2.setFont(u8g2_font_6x12_t_cyrillic);
     u8g2.drawUTF8(0, 20, "Нет AQI");
   } else {
+    char value[8];
+    snprintf(value, sizeof(value), "%.0f", air.aqi);
+    u8g2.setFont(u8g2_font_6x12_t_cyrillic);
+    u8g2.drawUTF8(0, 10, "AQI");
+    u8g2.setFont(u8g2_font_logisoso18_tn);
+    u8g2.drawStr(25, 21, value);
+    u8g2.setFont(u8g2_font_6x12_t_cyrillic);
+    u8g2.drawUTF8(78, 12, aqiHint(air.aqi));
     char line[40];
-     snprintf(line, sizeof(line), "AQI %.0f  %s", air.aqi, aqiHint(air.aqi));
-    u8g2.drawUTF8(0, 12, line);
-     snprintf(line, sizeof(line), "PM2.5  %.1f мкг/м3", air.pm25);
-    u8g2.drawUTF8(0, 26, line);
+    snprintf(line, sizeof(line), "PM2.5  %.1f мкг/м3", air.pm25);
+    u8g2.drawUTF8(0, 32, fitText(line, 128).c_str());
   }
   sendDisplayBuffer();
 }
