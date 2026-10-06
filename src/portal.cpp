@@ -37,6 +37,11 @@ static bool authorized() {
   return false;
 }
 
+static long dataAgeSeconds(uint32_t fetchedAt) {
+  if (fetchedAt == 0) return -1;
+  return (long)((millis() - fetchedAt) / 1000UL);
+}
+
 static String scanOptions() {
   String html;
   int n = WiFi.scanComplete();
@@ -369,17 +374,17 @@ static void handleApiStatus() {
   s += "\"wx_precip\":" + String(weather.precipProb) + ",";
   s += "\"wx_sunrise\":\"" + weather.sunrise + "\",";
   s += "\"wx_sunset\":\"" + weather.sunset + "\",";
-  s += "\"wx_age\":" + String(weather.fetchedAt > 0 ? (millis() - weather.fetchedAt) / 1000 : -1) + ",";
+  s += "\"wx_age\":" + String(dataAgeSeconds(weather.fetchedAt)) + ",";
   s += "\"air_ok\":" + String(air.ok ? "true" : "false") + ",";
   s += "\"air_aqi\":" + String(air.aqi, 0) + ",";
   s += "\"air_pm25\":" + String(air.pm25, 1) + ",";
-  s += "\"air_age\":" + String(air.fetchedAt > 0 ? (millis() - air.fetchedAt) / 1000 : -1) + ",";
+  s += "\"air_age\":" + String(dataAgeSeconds(air.fetchedAt)) + ",";
   s += "\"rates_ok\":" + String(rates.ok ? "true" : "false") + ",";
   s += "\"rates_usd\":" + String(rates.usd, 2) + ",";
   s += "\"rates_eur\":" + String(rates.eur, 2) + ",";
   s += "\"rates_cny\":" + String(rates.cny, 2) + ",";
   s += "\"rates_date\":\"" + rates.date + "\",";
-  s += "\"rates_age\":" + String(rates.fetchedAt > 0 ? (millis() - rates.fetchedAt) / 1000 : -1) + ",";
+  s += "\"rates_age\":" + String(dataAgeSeconds(rates.fetchedAt)) + ",";
   s += "\"weatherError\":\"" + htmlEscape(weatherError) + "\",";
   s += "\"airError\":\"" + htmlEscape(airError) + "\",";
   s += "\"ratesError\":\"" + htmlEscape(ratesError) + "\",";
