@@ -47,5 +47,6 @@ bool fetchRates();
 void applyTimezone();
 bool isNightNow();
 const char* wmoLabel(int code);
+const char* wmoShortLabel(int code);
 int moonPhase(int year, int month, int day);
 const char* moonLabel(int phase);

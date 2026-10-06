@@ -342,6 +342,21 @@ const char* wmoLabel(int code) {
   return "погода";
 }
 
+const char* wmoShortLabel(int code) {
+  if (code == 0) return "ясно";
+  if (code == 1) return "малообл.";
+  if (code == 2) return "облачно";
+  if (code == 3) return "пасмурно";
+  if (code == 45 || code == 48) return "туман";
+  if (code >= 51 && code <= 57) return "морось";
+  if (code >= 61 && code <= 67) return "дождь";
+  if (code >= 71 && code <= 77) return "снег";
+  if (code >= 80 && code <= 82) return "ливень";
+  if (code == 85 || code == 86) return "снегопад";
+  if (code >= 95 && code <= 99) return "гроза";
+  return "погода";
+}
+
 int moonPhase(int year, int month, int day) {
   // Simple Conway-like approximation -> 0 new ... 4 full
   if (month < 3) {

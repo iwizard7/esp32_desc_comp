@@ -17,8 +17,9 @@ void settingsDefaultsSlides() {
     settings.slideOrder[i] = (uint8_t)(i + 1);
     settings.slideSec[i] = 6;
   }
+  settings.slideOn[SLIDE_UMBRELLA] = false;
   settings.slideOn[SLIDE_INDOOR] = false;
-  settings.slideOn[SLIDE_STATUS] = true;
+  settings.slideOn[SLIDE_STATUS] = false;
 }
 
 void settingsLoad() {

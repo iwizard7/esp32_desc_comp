@@ -77,15 +77,10 @@ void displayClock() {
   } else {
     char hm[8];
     snprintf(hm, sizeof(hm), "%02d:%02d", t.tm_hour, t.tm_min);
-    u8g2.setFont(u8g2_font_logisoso22_tn);
+    u8g2.setFont(u8g2_font_logisoso24_tn);
     u8g2.drawStr(0, 24, hm);
-    char sec[8];
-    snprintf(sec, sizeof(sec), ":%02d", t.tm_sec);
-    u8g2.setFont(u8g2_font_t0_14_tn);
-    u8g2.drawStr(86, 24, sec);
     char line[40];
-    snprintf(line, sizeof(line), "%s %d %s %d", wdRu(t.tm_wday), t.tm_mday, monRu(t.tm_mon),
-             1900 + t.tm_year);
+    snprintf(line, sizeof(line), "%s %d %s", wdRu(t.tm_wday), t.tm_mday, monRu(t.tm_mon));
     u8g2.setFont(u8g2_font_6x12_t_cyrillic);
     u8g2.drawUTF8(0, 32, line);
   }
@@ -104,7 +99,7 @@ void displayWeather() {
     u8g2.setFont(u8g2_font_logisoso16_tr);
     u8g2.drawStr(0, 18, t);
     u8g2.setFont(u8g2_font_6x12_t_cyrillic);
-    u8g2.drawUTF8(56, 12, wmoLabel(weather.code));
+     u8g2.drawUTF8(56, 12, wmoShortLabel(weather.code));
     char sub[40];
     snprintf(sub, sizeof(sub), "%s  %d%%  %.0fм/с", settings.cityLabel.c_str(),
              (int)weather.humidity, weather.wind);
@@ -123,7 +118,7 @@ void displayForecast() {
     char line[40];
     snprintf(line, sizeof(line), "мин %+.0f°  макс %+.0f°", weather.tmin, weather.tmax);
     u8g2.drawUTF8(0, 21, line);
-    snprintf(line, sizeof(line), "осадки %d%%", weather.precipProb);
+    snprintf(line, sizeof(line), "осадки %d%% %.1fмм", weather.precipProb, weather.rainMm);
     u8g2.drawUTF8(0, 32, line);
   }
   u8g2.sendBuffer();
@@ -177,7 +172,6 @@ void displaySun() {
   time_t now = time(nullptr);
   struct tm t;
   localtime_r(&now, &t);
-  int phase = moonPhase(1900 + t.tm_year, t.tm_mon + 1, t.tm_mday);
   char line[48];
   if (weather.ok) {
     snprintf(line, sizeof(line), "восход %s", weather.sunrise.c_str());
@@ -187,7 +181,7 @@ void displaySun() {
   } else {
     u8g2.drawUTF8(0, 14, "нет солнца");
   }
-  u8g2.drawUTF8(0, 32, moonLabel(phase));
+  u8g2.drawUTF8(0, 32, settings.cityLabel.c_str());
   u8g2.sendBuffer();
 }
 
@@ -257,7 +251,7 @@ void displayRebuildPlaylist() {
   playlistCount = 0;
   for (int order = 1; order <= SLIDE_COUNT; order++) {
     for (int i = 0; i < SLIDE_COUNT; i++) {
-      if (settings.slideOn[i] && settings.slideOrder[i] == order) {
+       if (i != SLIDE_UMBRELLA && settings.slideOn[i] && settings.slideOrder[i] == order) {
         playlist[playlistCount++] = (uint8_t)i;
       }
     }
@@ -265,7 +259,7 @@ void displayRebuildPlaylist() {
   // If order wasn't set or count is 0, add whatever is enabled
   if (playlistCount == 0) {
     for (int i = 0; i < SLIDE_COUNT; i++) {
-      if (settings.slideOn[i]) playlist[playlistCount++] = (uint8_t)i;
+       if (i != SLIDE_UMBRELLA && settings.slideOn[i]) playlist[playlistCount++] = (uint8_t)i;
     }
   }
   if (playlistCount == 0) {

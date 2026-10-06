@@ -62,7 +62,7 @@ static String page() {
          "main{max-width:440px;margin:0 auto;padding:16px}"
          "h1{font-size:1.2rem;margin:0 0 12px}"
          "label,p{display:block;margin:12px 0 4px}"
-         "input,select,button{width:100%;box-sizing:border-box;padding:10px;border-radius:8px;"
+          "input,select,button{width:100%;box-sizing:border-box;padding:10px;min-height:44px;border-radius:8px;"
          "border:1px solid #444;background:#1c1c1c;color:#eee;font-size:16px}"
          "button{background:#3b82f6;border:0;margin-top:16px;font-weight:600;cursor:pointer}"
          "button.alt{background:#444}"
@@ -134,13 +134,13 @@ static String page() {
   box("s_clock", SLIDE_CLOCK, "время и дата");
   box("s_wx", SLIDE_WEATHER, "погода сейчас");
   box("s_fc", SLIDE_FORECAST, "мин/макс и осадки");
-  box("s_umb", SLIDE_UMBRELLA, "осадки в ближайший час");
   box("s_fx", SLIDE_RATES, "курсы ЦБ (USD EUR CNY)");
   box("s_air", SLIDE_AIR, "качество воздуха (AQI/PM2.5)");
-  box("s_sun", SLIDE_SUN, "восход, закат, фаза луны");
+   box("s_sun", SLIDE_SUN, "восход и закат");
   box("s_in", SLIDE_INDOOR, "комнатный климат (BME280)");
   box("s_st", SLIDE_STATUS, "IP и уровень Wi‑Fi");
-  s += F("</div><button type=submit>Сохранить и подключить</button></form>"
+   s += F("</div><small>Осадки теперь показываются вместе с прогнозом. Отдельный экран дождя отключён.</small>"
+          "<button type=submit>Сохранить и подключить</button></form>"
          "<form method=POST action=/rescan><button class=alt type=submit>Обновить список сетей</button></form>"
          "<form method=POST action=/ap><button class=alt type=submit>Только точка доступа</button></form>"
          "<form method=POST action=/reset onsubmit=\"return confirm('Сбросить все настройки?')\">"
