@@ -13,4 +13,5 @@ void displayAdvance(bool animate = true);
 uint8_t displayCurrentSlideId();
 uint32_t displayCurrentDurationMs();
 void displayShowCurrent();
+void displayInvalidate();
 void displayClock();

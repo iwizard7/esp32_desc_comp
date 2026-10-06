@@ -16,6 +16,7 @@ static bool pausedRotation = false;
 // FreeRTOS background task handle & signals
 static TaskHandle_t fetchTaskHandle = nullptr;
 static volatile bool bgFetchPending = false;
+static volatile bool bgFetchForce = false;
 
 static void ntpSync() {
   applyTimezone();
@@ -27,24 +28,21 @@ static void backgroundFetchTask(void* param) {
     if (bgFetchPending && WiFi.status() == WL_CONNECTED) {
       bgFetchPending = false;
       ntpSync();
-      if (settings.city.length() > 0) {
-        geocodeCity(settings.city);
-        settingsSave();
-      }
-      fetchWeather();
-      fetchAir();
-      fetchRates();
+      fetchAllData(bgFetchForce);
+      bgFetchForce = false;
       if (settings.bmeEnabled) {
         bmePoll();
       }
+      displayInvalidate();
     }
     // Check every 500ms
     vTaskDelay(pdMS_TO_TICKS(500));
   }
 }
 
-static void triggerAsyncFetch() {
+static void triggerAsyncFetch(bool force = false) {
   bgFetchPending = true;
+  if (force) bgFetchForce = true;
 }
 
 static void startSta() {
@@ -71,7 +69,7 @@ static void enterAp(const char* why) {
 static void afterOnline() {
   portalBeginSta();
   connecting = false;
-  triggerAsyncFetch();
+       triggerAsyncFetch(true);
   displayRebuildPlaylist();
   lastSlideMs = millis();
 }
@@ -224,19 +222,23 @@ void loop() {
   if (Serial.available()) {
     char ch = (char)Serial.read();
     if (ch == 's') {
-      Serial.printf("{\"wifi\":\"%s\",\"ip\":\"%s\",\"city\":\"%s\",\"lat\":%.4f,\"lon\":%.4f,\"wx\":%d,\"air\":%d,\"rates\":%d,\"err\":\"%s\"}\n",
-                    WiFi.status() == WL_CONNECTED ? "connected" : "disconnected",
-                    WiFi.localIP().toString().c_str(),
-                    settings.city.c_str(),
-                    settings.lat,
-                    settings.lon,
-                    weather.ok ? 1 : 0,
-                    air.ok ? 1 : 0,
-                    rates.ok ? 1 : 0,
-                    lastError.c_str());
+       Serial.printf("{\"wifi\":\"%s\",\"ip\":\"%s\",\"city\":\"%s\",\"tz\":\"%s\",\"lat\":%.4f,\"lon\":%.4f,\"wx\":%d,\"air\":%d,\"rates\":%d,\"weatherError\":\"%s\",\"airError\":\"%s\",\"ratesError\":\"%s\",\"err\":\"%s\"}\n",
+                     WiFi.status() == WL_CONNECTED ? "connected" : "disconnected",
+                     WiFi.localIP().toString().c_str(),
+                     settings.city.c_str(),
+                     settings.timezone.c_str(),
+                     settings.lat,
+                     settings.lon,
+                     weather.ok ? 1 : 0,
+                     air.ok ? 1 : 0,
+                     rates.ok ? 1 : 0,
+                     weatherError.c_str(),
+                     airError.c_str(),
+                     ratesError.c_str(),
+                     lastError.c_str());
     } else if (ch == 'f') {
       Serial.println("[CMD] Triggering fetch...");
-      triggerAsyncFetch();
+      triggerAsyncFetch(true);
     } else if (ch == 'r') {
       Serial.println("[CMD] Rebooting...");
       delay(200);

@@ -12,6 +12,13 @@ WeatherData weather{};
 AirData air{};
 RatesData rates{};
 String lastError;
+String geoError;
+String weatherError;
+String airError;
+String ratesError;
+static SemaphoreHandle_t fetchMutex = nullptr;
+static uint32_t nextFetchAllowedMs = 0;
+static uint8_t fetchFailures = 0;
 
 static void initWeatherDefaults() {
   weather.rainInMin = -1;
@@ -126,6 +133,11 @@ static void urlEncode(const String& in, String& out) {
 }
 
 void applyTimezone() {
+  if (settings.timezone.length()) {
+    setenv("TZ", settings.timezone.c_str(), 1);
+    tzset();
+    return;
+  }
   int h = settings.utcOffset / 3600;
   char buf[16];
   if (h >= 0) {
@@ -145,19 +157,20 @@ bool geocodeCity(const String& city) {
                "&count=1&language=ru&format=json";
   String body = httpsGet(url);
   if (body.isEmpty()) {
+    geoError = "network";
     Serial.println("[GEO] Empty body, keeping current coords");
     return false;
   }
 
   JsonDocument doc;
   if (deserializeJson(doc, body)) {
-    lastError = "geo-json";
+    geoError = "json";
     Serial.println("[GEO] JSON parse error");
     return false;
   }
   JsonArray results = doc["results"].as<JsonArray>();
   if (results.isNull() || results.size() == 0) {
-    lastError = "город не найден";
+    geoError = "город не найден";
     Serial.println("[GEO] City not found");
     return false;
   }
@@ -165,7 +178,11 @@ bool geocodeCity(const String& city) {
   settings.lat = r["latitude"] | settings.lat;
   settings.lon = r["longitude"] | settings.lon;
   settings.cityLabel = r["name"] | city;
+  settings.timezone = r["timezone"] | settings.timezone;
+  settings.utcOffset = r["utc_offset_seconds"] | settings.utcOffset;
   settings.city = city;
+  applyTimezone();
+  geoError = "";
   Serial.printf("[GEO] OK: %s lat=%.4f lon=%.4f\n",
                 settings.cityLabel.c_str(), settings.lat, settings.lon);
   return true;
@@ -190,7 +207,7 @@ static int wttrCode(int code) {
 bool fetchWeather() {
   Serial.printf("[WX] Fetch weather for lat=%.4f lon=%.4f\n", settings.lat, settings.lon);
   if (settings.lat == 0 && settings.lon == 0) {
-    lastError = "lat/lon=0";
+    weatherError = "lat/lon=0";
     Serial.println("[WX] ERROR: coordinates are 0,0 - geocode not done");
     return false;
   }
@@ -200,6 +217,7 @@ bool fetchWeather() {
            settings.lat, settings.lon);
   String body = httpsGet(url);
   if (body.isEmpty()) {
+    weatherError = "network";
     Serial.println("[WX] wttr.in request failed");
     return false;
   }
@@ -219,7 +237,7 @@ bool fetchWeather() {
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, body, DeserializationOption::Filter(filter));
   if (err) {
-    lastError = "wx json";
+    weatherError = "json";
     Serial.printf("[WX] JSON error: %s\n", err.c_str());
     return false;
   }
@@ -227,7 +245,7 @@ bool fetchWeather() {
   JsonObject current = doc["current_condition"][0];
   JsonArray days = doc["weather"].as<JsonArray>();
   if (current.isNull() || days.isNull() || days.size() == 0) {
-    lastError = "wx fields";
+    weatherError = "fields";
     Serial.println("[WX] Missing current_condition/weather in wttr response");
     return false;
   }
@@ -249,6 +267,7 @@ bool fetchWeather() {
   weather.rainInMin = -1;
   weather.ok = true;
   weather.fetchedAt = millis();
+  weatherError = "";
   Serial.printf("[WX] wttr OK: temp=%.1f humidity=%.0f wind=%.1f rain=%.1f\n",
                 weather.temp, weather.humidity, weather.wind, weather.rainMm);
   return true;
@@ -257,7 +276,7 @@ bool fetchWeather() {
 bool fetchAir() {
   Serial.println("[AQI] Fetch air quality");
   if (settings.lat == 0 && settings.lon == 0) {
-    lastError = "lat/lon=0";
+    airError = "lat/lon=0";
     return false;
   }
   char url[300];
@@ -274,16 +293,20 @@ bool fetchAir() {
              settings.lat, settings.lon);
     body = httpsGet(url);
   }
-  if (body.isEmpty()) return false;
+  if (body.isEmpty()) {
+    airError = "network";
+    return false;
+  }
   JsonDocument doc;
   if (deserializeJson(doc, body)) {
-    lastError = "aqi-json";
+    airError = "json";
     return false;
   }
   air.aqi = doc["current"]["european_aqi"] | 0.0f;
   air.pm25 = doc["current"]["pm2_5"] | 0.0f;
   air.ok = true;
   air.fetchedAt = millis();
+  airError = "";
   Serial.printf("[AQI] OK: AQI=%.0f PM2.5=%.1f\n", air.aqi, air.pm25);
   return true;
 }
@@ -291,7 +314,10 @@ bool fetchAir() {
 bool fetchRates() {
   Serial.println("[FX] Fetch rates from CBR");
   String body = httpsGet("https://www.cbr-xml-daily.ru/daily_json.js");
-  if (body.isEmpty()) return false;
+  if (body.isEmpty()) {
+    ratesError = "network";
+    return false;
+  }
   JsonDocument filter;
   filter["Date"] = true;
   filter["Valute"]["USD"]["Value"] = true;
@@ -303,7 +329,7 @@ bool fetchRates() {
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, body, DeserializationOption::Filter(filter));
   if (err) {
-    lastError = "cbr json";
+    ratesError = "json";
     return false;
   }
   auto unit = [](JsonObject v) -> float {
@@ -314,7 +340,7 @@ bool fetchRates() {
   };
   JsonObject valute = doc["Valute"].as<JsonObject>();
   if (valute.isNull()) {
-    lastError = "cbr valute";
+    ratesError = "fields";
     return false;
   }
   rates.usd = unit(valute["USD"].as<JsonObject>());
@@ -324,7 +350,39 @@ bool fetchRates() {
   if (rates.date.length() >= 10) rates.date = rates.date.substring(0, 10);
   rates.ok = true;
   rates.fetchedAt = millis();
+  ratesError = "";
   return true;
+}
+
+bool fetchAllData(bool force) {
+  uint32_t now = millis();
+  if (!force && (int32_t)(now - nextFetchAllowedMs) < 0) return false;
+  if (!fetchMutex) fetchMutex = xSemaphoreCreateMutex();
+  if (!fetchMutex || xSemaphoreTake(fetchMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+    lastError = "fetch-busy";
+    return false;
+  }
+
+  bool ok = true;
+  if (settings.city.length() && !geocodeCity(settings.city)) ok = false;
+  settingsSave();
+  if (!fetchWeather()) ok = false;
+  if (!fetchAir()) ok = false;
+  if (!fetchRates()) ok = false;
+
+  if (ok) {
+    fetchFailures = 0;
+    nextFetchAllowedMs = millis() + 15000UL;
+    lastError = "";
+  } else {
+    if (fetchFailures < 6) fetchFailures++;
+    uint32_t delayMs = 30000UL << (fetchFailures > 4 ? 4 : fetchFailures - 1);
+    if (delayMs > 15 * 60 * 1000UL) delayMs = 15 * 60 * 1000UL;
+    nextFetchAllowedMs = millis() + delayMs;
+    lastError = weatherError.length() ? weatherError : (airError.length() ? airError : ratesError);
+  }
+  xSemaphoreGive(fetchMutex);
+  return ok;
 }
 
 const char* wmoLabel(int code) {

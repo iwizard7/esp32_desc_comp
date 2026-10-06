@@ -31,6 +31,12 @@ static String htmlEscape(const String& s) {
   return o;
 }
 
+static bool authorized() {
+  if (server.authenticate("admin", settings.webPass.c_str())) return true;
+  server.requestAuthentication(BASIC_AUTH, "Desk OLED");
+  return false;
+}
+
 static String scanOptions() {
   String html;
   int n = WiFi.scanComplete();
@@ -67,8 +73,11 @@ static String page() {
          "button{background:#3b82f6;border:0;margin-top:16px;font-weight:600;cursor:pointer}"
          "button.alt{background:#444}"
          "button.danger{background:#b91c1c}"
-         ".row{display:flex;gap:8px;align-items:center;margin:6px 0}"
-         ".row input{width:auto}"
+          ".row{display:flex;gap:8px;align-items:center;margin:6px 0}"
+          ".row input{width:auto}"
+          ".slide-row{display:grid;grid-template-columns:24px 1fr 52px 60px;gap:6px;align-items:center;margin:8px 0}"
+          ".slide-row input{min-height:36px;padding:6px}"
+          ".slide-row input[type=checkbox]{width:auto}"
          ".card{background:#1a1a1a;padding:12px;border-radius:12px;margin:12px 0}"
          "small{color:#aaa}"
          "</style></head><body><main><h1>ESP32 Desk OLED</h1>");
@@ -90,6 +99,7 @@ static String page() {
   s += "</select><p>или ввести SSID вручную</p><input name=ssid placeholder='SSID' value='";
   s += htmlEscape(settings.ssid);
   s += F("'><p>Пароль Wi‑Fi</p><input name=pass type=password placeholder='пароль'>");
+  s += F("<p>Пароль веб-интерфейса</p><input name=webpass type=password placeholder='admin пароль'><small>Логин: admin. Пустое поле сохраняет текущий пароль.</small>");
   s += F("<p>Город (погода, время, дата)</p><input name=city required value='");
   s += htmlEscape(settings.city);
   s += F("'><p>Интервал слайдов по умолчанию, сек (3–120)</p><input name=interval type=number min=3 max=120 value='");
@@ -119,8 +129,8 @@ static String page() {
   s += F("><label for=bme>опрос датчика BME280</label></div>");
 
   s += F("<div class=card><p><b>Экраны и ротация</b></p>");
-  auto box = [&](const char* name, uint8_t id, const char* label) {
-    s += "<div class=row><input type=checkbox name=";
+  auto box = [&](const char* name, uint8_t id, const char* label, const char* token) {
+    s += "<div class=slide-row><input type=checkbox name=";
     s += name;
     s += " id=";
     s += name;
@@ -129,16 +139,24 @@ static String page() {
     s += name;
     s += ">";
     s += label;
-    s += "</label></div>";
+    s += "</label><input class=mini type=number min=1 max=9 name=ord_";
+    s += token;
+    s += " value='";
+    s += String(settings.slideOrder[id]);
+    s += "' title='порядок'><input class=mini type=number min=3 max=120 name=sec_";
+    s += token;
+    s += " value='";
+    s += String(settings.slideSec[id]);
+    s += "' title='секунды'></div>";
   };
-  box("s_clock", SLIDE_CLOCK, "время и дата");
-  box("s_wx", SLIDE_WEATHER, "погода сейчас");
-  box("s_fc", SLIDE_FORECAST, "мин/макс и осадки");
-  box("s_fx", SLIDE_RATES, "курсы ЦБ (USD EUR CNY)");
-  box("s_air", SLIDE_AIR, "качество воздуха (AQI/PM2.5)");
-   box("s_sun", SLIDE_SUN, "восход и закат");
-  box("s_in", SLIDE_INDOOR, "комнатный климат (BME280)");
-  box("s_st", SLIDE_STATUS, "IP и уровень Wi‑Fi");
+  box("s_clock", SLIDE_CLOCK, "время и дата", "clock");
+  box("s_wx", SLIDE_WEATHER, "погода сейчас", "wx");
+  box("s_fc", SLIDE_FORECAST, "мин/макс и осадки", "fc");
+  box("s_fx", SLIDE_RATES, "курсы ЦБ (USD EUR CNY)", "fx");
+  box("s_air", SLIDE_AIR, "качество воздуха (AQI/PM2.5)", "air");
+  box("s_sun", SLIDE_SUN, "восход и закат", "sun");
+  box("s_in", SLIDE_INDOOR, "комнатный климат (BME280)", "in");
+  box("s_st", SLIDE_STATUS, "IP и уровень Wi‑Fi", "st");
    s += F("</div><small>Осадки теперь показываются вместе с прогнозом. Отдельный экран дождя отключён.</small>"
           "<button type=submit>Сохранить и подключить</button></form>"
          "<form method=POST action=/rescan><button class=alt type=submit>Обновить список сетей</button></form>"
@@ -161,7 +179,10 @@ static String page() {
   return s;
 }
 
-static void handleRoot() { server.send(200, "text/html; charset=utf-8", page()); }
+static void handleRoot() {
+  if (!authorized()) return;
+  server.send(200, "text/html; charset=utf-8", page());
+}
 
 static void handleNotFound() {
   if (apActive) {
@@ -170,6 +191,15 @@ static void handleNotFound() {
     return;
   }
   server.send(404, "text/plain", "Not found");
+}
+
+static uint8_t slideNumber(const char* prefix, const char* token, uint8_t fallback,
+                           int minValue, int maxValue) {
+  String name = String(prefix) + token;
+  int value = server.hasArg(name) ? server.arg(name).toInt() : fallback;
+  if (value < minValue) value = minValue;
+  if (value > maxValue) value = maxValue;
+  return (uint8_t)value;
 }
 
 static void parseSlidesFromArgs() {
@@ -183,6 +213,14 @@ static void parseSlidesFromArgs() {
   settings.slideOn[SLIDE_INDOOR] = server.hasArg("s_in");
   settings.slideOn[SLIDE_STATUS] = server.hasArg("s_st");
 
+  const char* tokens[SLIDE_COUNT] = {"clock", "wx", "fc", "umb", "fx", "air", "sun", "in", "st"};
+  for (int i = 0; i < SLIDE_COUNT; i++) {
+    settings.slideOrder[i] = slideNumber("ord_", tokens[i], settings.slideOrder[i], 1, SLIDE_COUNT);
+    settings.slideSec[i] = clampSlideSec(slideNumber("sec_", tokens[i], settings.slideSec[i], 3, 120));
+  }
+  // The old rain screen is now merged into the forecast screen.
+  settings.slideOn[SLIDE_UMBRELLA] = false;
+
   bool any = false;
   for (int i = 0; i < SLIDE_COUNT; i++) {
     if (settings.slideOn[i]) any = true;
@@ -191,6 +229,7 @@ static void parseSlidesFromArgs() {
 }
 
 static void handleSave() {
+  if (!authorized()) return;
   String sel = server.arg("ssid_sel");
   String typed = server.arg("ssid");
   typed.trim();
@@ -199,6 +238,10 @@ static void handleSave() {
 
   String pass = server.arg("pass");
   if (pass.length()) settings.pass = pass;
+
+  String webpass = server.arg("webpass");
+  webpass.trim();
+  if (webpass.length() >= 6) settings.webPass = webpass;
 
   String city = server.arg("city");
   city.trim();
@@ -235,11 +278,7 @@ static void handleSave() {
   displayMessage("Сохранено", "геокод города...", settings.city.c_str());
 
   if (WiFi.status() == WL_CONNECTED) {
-    geocodeCity(settings.city);
-    settingsSave();
-    fetchWeather();
-    fetchAir();
-    fetchRates();
+    fetchAllData(true);
   }
 
   server.send(200, "text/html; charset=utf-8",
@@ -251,6 +290,7 @@ static void handleSave() {
 }
 
 static void handleReset() {
+  if (!authorized()) return;
   settingsFactoryReset();
   server.send(200, "text/plain; charset=utf-8", "OK, reboot");
   delay(300);
@@ -258,6 +298,7 @@ static void handleReset() {
 }
 
 static void handleRescan() {
+  if (!authorized()) return;
   WiFi.scanDelete();
   WiFi.scanNetworks();
   server.sendHeader("Location", "/", true);
@@ -265,6 +306,7 @@ static void handleRescan() {
 }
 
 static void handleForceAp() {
+  if (!authorized()) return;
   settingsClearWifi();
   server.send(200, "text/plain; charset=utf-8", "AP mode, reboot");
   delay(300);
@@ -274,6 +316,7 @@ static void handleForceAp() {
 #include <Update.h>
 
 static void handleUpdatePost() {
+  if (!authorized()) return;
   server.sendHeader("Connection", "close");
   server.send(200, "text/plain; charset=utf-8", (Update.hasError()) ? "Ошибка OTA!" : "Успешно! Перезагрузка...");
   delay(500);
@@ -281,6 +324,7 @@ static void handleUpdatePost() {
 }
 
 static void handleUpdateUpload() {
+  if (!authorized()) return;
   HTTPUpload& upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
     displayMessage("OTA обновление", "прошивка...");
@@ -303,6 +347,7 @@ static void handleUpdateUpload() {
 static bool httpStarted = false;
 
 static void handleApiStatus() {
+  if (!authorized()) return;
   String s = "{";
   s += "\"wifi\":\"" + String(WiFi.status() == WL_CONNECTED ? "connected" : "disconnected") + "\",";
   s += "\"ssid\":\"" + htmlEscape(WiFi.SSID()) + "\",";
@@ -313,6 +358,7 @@ static void handleApiStatus() {
   s += "\"lat\":" + String(settings.lat, 4) + ",";
   s += "\"lon\":" + String(settings.lon, 4) + ",";
   s += "\"utcOffset\":" + String(settings.utcOffset) + ",";
+  s += "\"timezone\":\"" + htmlEscape(settings.timezone) + "\",";
   s += "\"wx_ok\":" + String(weather.ok ? "true" : "false") + ",";
   s += "\"wx_temp\":" + String(weather.temp, 1) + ",";
   s += "\"wx_hum\":" + String(weather.humidity, 0) + ",";
@@ -334,6 +380,11 @@ static void handleApiStatus() {
   s += "\"rates_cny\":" + String(rates.cny, 2) + ",";
   s += "\"rates_date\":\"" + rates.date + "\",";
   s += "\"rates_age\":" + String(rates.fetchedAt > 0 ? (millis() - rates.fetchedAt) / 1000 : -1) + ",";
+  s += "\"weatherError\":\"" + htmlEscape(weatherError) + "\",";
+  s += "\"airError\":\"" + htmlEscape(airError) + "\",";
+  s += "\"ratesError\":\"" + htmlEscape(ratesError) + "\",";
+  s += "\"geoError\":\"" + htmlEscape(geoError) + "\",";
+  s += "\"freeHeap\":" + String(ESP.getFreeHeap()) + ",";
   s += "\"lastError\":\"" + htmlEscape(lastError) + "\",";
   s += "\"uptime\":" + String(millis() / 1000);
   s += "}";
@@ -341,6 +392,7 @@ static void handleApiStatus() {
 }
 
 static void handleDiag() {
+  if (!authorized()) return;
   String html = F("<!DOCTYPE html><html lang=ru><head><meta charset=utf-8>"
     "<meta name=viewport content='width=device-width,initial-scale=1'>"
     "<title>Desk OLED — Диагностика</title>"
@@ -447,10 +499,8 @@ static void handleDiag() {
 }
 
 static void handleApiFetch() {
-  geocodeCity(settings.city);
-  fetchWeather();
-  fetchAir();
-  fetchRates();
+  if (!authorized()) return;
+  fetchAllData(true);
   handleApiStatus();
 }
 

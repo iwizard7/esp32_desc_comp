@@ -39,11 +39,16 @@ extern WeatherData weather;
 extern AirData air;
 extern RatesData rates;
 extern String lastError;
+extern String geoError;
+extern String weatherError;
+extern String airError;
+extern String ratesError;
 
 bool geocodeCity(const String& city);
 bool fetchWeather();
 bool fetchAir();
 bool fetchRates();
+bool fetchAllData(bool force = false);
 void applyTimezone();
 bool isNightNow();
 const char* wmoLabel(int code);

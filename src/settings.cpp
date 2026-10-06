@@ -29,6 +29,8 @@ void settingsLoad() {
   settings.pass = prefs.getString("pass", "");
   settings.city = prefs.getString("city", "Moscow");
   settings.cityLabel = prefs.getString("clabel", "Москва");
+  settings.timezone = prefs.getString("tz", "Europe/Moscow");
+  settings.webPass = prefs.getString("webpass", "deskadmin");
   settings.lat = prefs.getFloat("lat", 55.7558f);
   settings.lon = prefs.getFloat("lon", 37.6173f);
   settings.utcOffset = prefs.getInt("utc", 10800);
@@ -86,6 +88,8 @@ void settingsSave() {
   prefs.putString("pass", settings.pass);
   prefs.putString("city", settings.city);
   prefs.putString("clabel", settings.cityLabel);
+  prefs.putString("tz", settings.timezone);
+  prefs.putString("webpass", settings.webPass);
   prefs.putFloat("lat", settings.lat);
   prefs.putFloat("lon", settings.lon);
   prefs.putInt("utc", settings.utcOffset);
@@ -117,6 +121,7 @@ void settingsFactoryReset() {
   settings.configured = false;
   settings.ssid = "";
   settings.pass = "";
+  settings.webPass = "deskadmin";
 }
 
 bool settingsHasWifi() {

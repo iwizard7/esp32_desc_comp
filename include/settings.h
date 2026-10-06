@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#define FW_VERSION "0.4.0"
+#define FW_VERSION "0.5.0"
 
 #define SLIDE_CLOCK 0
 #define SLIDE_WEATHER 1
@@ -20,6 +20,8 @@ struct Settings {
   String pass;
   String city;
   String cityLabel;
+  String timezone;
+  String webPass;
   float lat;
   float lon;
   int utcOffset;

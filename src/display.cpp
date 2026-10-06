@@ -11,6 +11,20 @@
 #include <time.h>
 
 static U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
+static int8_t shiftX = 0;
+static int8_t shiftY = 0;
+
+static void sendDisplayBuffer() {
+  if (shiftX) {
+    uint8_t* buf = u8g2.getBufferPtr();
+    for (int page = 0; page < 4; page++) {
+      uint8_t* row = buf + page * 128;
+      for (int x = 127; x > 0; x--) row[x] = (uint8_t)((row[x] >> 1) | (row[x - 1] << 7));
+      row[0] >>= 1;
+    }
+  }
+  u8g2.sendBuffer();
+}
 
 static const char* wdRu(int wday) {
   static const char* d[] = {"Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"};
@@ -49,7 +63,7 @@ void displayMessage(const char* line1, const char* line2, const char* line3) {
   if (line1 && line1[0]) u8g2.drawUTF8(0, 10, line1);
   if (line2 && line2[0]) u8g2.drawUTF8(0, 21, line2);
   if (line3 && line3[0]) u8g2.drawUTF8(0, 32, line3);
-  u8g2.sendBuffer();
+       u8g2.sendBuffer();
 }
 
 void displayApInfo(const char* ssid, const char* pass) {
@@ -61,7 +75,7 @@ void displayApInfo(const char* ssid, const char* pass) {
   snprintf(buf, sizeof(buf), "пароль %s", pass);
   u8g2.drawUTF8(0, 26, buf);
   u8g2.drawUTF8(0, 32, "http://192.168.4.1");
-  u8g2.sendBuffer();
+  sendDisplayBuffer();
 }
 
 void displayClock() {
@@ -84,7 +98,7 @@ void displayClock() {
     u8g2.setFont(u8g2_font_6x12_t_cyrillic);
     u8g2.drawUTF8(0, 32, line);
   }
-  u8g2.sendBuffer();
+  sendDisplayBuffer();
 }
 
 void displayWeather() {
@@ -92,7 +106,7 @@ void displayWeather() {
   u8g2.setFont(u8g2_font_6x12_t_cyrillic);
   if (!weather.ok) {
     u8g2.drawUTF8(0, 14, "Нет погоды");
-    u8g2.drawUTF8(0, 28, lastError.c_str());
+     u8g2.drawUTF8(0, 28, weatherError.c_str());
   } else {
     char t[16];
     snprintf(t, sizeof(t), "%+.0f°", weather.temp);
@@ -105,7 +119,7 @@ void displayWeather() {
              (int)weather.humidity, weather.wind);
     u8g2.drawUTF8(0, 32, sub);
   }
-  u8g2.sendBuffer();
+  sendDisplayBuffer();
 }
 
 void displayForecast() {
@@ -121,7 +135,7 @@ void displayForecast() {
     snprintf(line, sizeof(line), "осадки %d%% %.1fмм", weather.precipProb, weather.rainMm);
     u8g2.drawUTF8(0, 32, line);
   }
-  u8g2.sendBuffer();
+  sendDisplayBuffer();
 }
 
 void displayRates() {
@@ -129,7 +143,7 @@ void displayRates() {
   u8g2.setFont(u8g2_font_6x12_t_cyrillic);
   if (!rates.ok) {
     u8g2.drawUTF8(0, 14, "Нет курсов ЦБ");
-    u8g2.drawUTF8(0, 28, lastError.c_str());
+     u8g2.drawUTF8(0, 28, ratesError.c_str());
   } else {
     char a[24], b[24], c[24];
     snprintf(a, sizeof(a), "USD  %.2f", rates.usd);
@@ -139,7 +153,7 @@ void displayRates() {
     u8g2.drawUTF8(0, 21, b);
     u8g2.drawUTF8(0, 32, c);
   }
-  u8g2.sendBuffer();
+  sendDisplayBuffer();
 }
 
 static const char* aqiHint(float aqi) {
@@ -163,7 +177,7 @@ void displayAir() {
     snprintf(line, sizeof(line), "PM2.5  %.1f ug/m3", air.pm25);
     u8g2.drawUTF8(0, 26, line);
   }
-  u8g2.sendBuffer();
+  sendDisplayBuffer();
 }
 
 void displaySun() {
@@ -182,7 +196,7 @@ void displaySun() {
     u8g2.drawUTF8(0, 14, "нет солнца");
   }
   u8g2.drawUTF8(0, 32, settings.cityLabel.c_str());
-  u8g2.sendBuffer();
+  sendDisplayBuffer();
 }
 
 void displayStatus() {
@@ -196,7 +210,7 @@ void displayStatus() {
   snprintf(line, sizeof(line), "слайд %u сек", settings.intervalSec);
   u8g2.drawUTF8(0, 26, line);
   u8g2.drawUTF8(0, 32, settings.cityLabel.c_str());
-  u8g2.sendBuffer();
+  sendDisplayBuffer();
 }
 
 void displayUmbrella() {
@@ -221,7 +235,7 @@ void displayUmbrella() {
     snprintf(line, sizeof(line), "в ближ. час (вер. %d%%)", weather.precipProb);
     u8g2.drawUTF8(0, 26, line);
   }
-  u8g2.sendBuffer();
+  sendDisplayBuffer();
 }
 
 void displayIndoor() {
@@ -240,7 +254,7 @@ void displayIndoor() {
     snprintf(sub, sizeof(sub), "В комн. %.0f%% %.0fмм", indoor.humidity, indoor.pressure * 0.750062f);
     u8g2.drawUTF8(0, 32, sub);
   }
-  u8g2.sendBuffer();
+  sendDisplayBuffer();
 }
 
 static uint8_t playlist[SLIDE_COUNT];
@@ -297,9 +311,8 @@ void renderSlideById(uint8_t id) {
 }
 
 // Pixel shifting for burn-in protection: shifts display offsets periodically
-static int8_t shiftX = 0;
-static int8_t shiftY = 0;
 static uint32_t lastShiftMs = 0;
+static bool displayDirty = true;
 
 static void updatePixelShift() {
   if (!settings.pixelShift) {
@@ -315,6 +328,7 @@ static void updatePixelShift() {
     seq = (seq + 1) % 4;
     shiftX = (seq & 1) ? 1 : 0;
     shiftY = (seq & 2) ? 1 : 0;
+    displayDirty = true;
   }
 }
 
@@ -367,7 +381,7 @@ void displayAdvance(bool animate) {
           memcpy(buf + page * 128, nextBuf + srcPage * 128, 128);
         }
       }
-      u8g2.sendBuffer();
+      sendDisplayBuffer();
       delay(35);
     }
   }
@@ -379,10 +393,23 @@ void displayAdvance(bool animate) {
 
 void displayShowCurrent() {
   updatePixelShift();
+  static time_t lastSecond = 0;
+  static uint8_t lastSlide = 255;
+  static bool lastNightOnly = false;
+  time_t now = time(nullptr);
+  bool nightOnly = settings.nightMode && settings.nightClockOnly && isNightNow();
+  uint8_t slide = displayCurrentSlideId();
+  if (!displayDirty && now == lastSecond && slide == lastSlide && nightOnly == lastNightOnly) return;
   displayApplyTheme();
-  if (settings.nightMode && settings.nightClockOnly && isNightNow()) {
+  if (nightOnly) {
     displayClock();
-    return;
+  } else {
+    renderSlideById(slide);
   }
-  renderSlideById(displayCurrentSlideId());
+  lastSecond = now;
+  lastSlide = slide;
+  lastNightOnly = nightOnly;
+  displayDirty = false;
 }
+
+void displayInvalidate() { displayDirty = true; }
