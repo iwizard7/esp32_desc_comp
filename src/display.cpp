@@ -214,17 +214,15 @@ void displayAir() {
 
 void displaySun() {
   u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_6x12_t_cyrillic);
-  time_t now = time(nullptr);
-  struct tm t;
-  localtime_r(&now, &t);
-  char line[48];
   if (weather.ok) {
-     snprintf(line, sizeof(line), "Восход  %s", weather.sunrise.c_str());
-     u8g2.drawUTF8(0, 12, line);
-     snprintf(line, sizeof(line), "Закат   %s", weather.sunset.c_str());
-     u8g2.drawUTF8(0, 27, line);
+    u8g2.setFont(u8g2_font_5x8_t_cyrillic);
+    u8g2.drawUTF8(0, 8, "Восх");
+    u8g2.drawUTF8(0, 25, "Закат");
+    u8g2.setFont(u8g2_font_logisoso18_tn);
+    u8g2.drawUTF8(30, 15, weather.sunrise.c_str());
+    u8g2.drawUTF8(30, 32, weather.sunset.c_str());
   } else {
+    u8g2.setFont(u8g2_font_6x12_t_cyrillic);
     u8g2.drawUTF8(0, 14, "нет солнца");
   }
    sendDisplayBuffer();
