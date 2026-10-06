@@ -158,6 +158,7 @@ void setup() {
   pinMode(PIN_BOOT, INPUT_PULLUP);
 
   settingsLoad();
+  dataCacheLoad();
   displayBegin();
   displayRebuildPlaylist();
   if (settings.bmeEnabled) {

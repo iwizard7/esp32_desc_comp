@@ -7,6 +7,7 @@
 #include <ArduinoJson.h>
 #include <math.h>
 #include <time.h>
+#include <Preferences.h>
 
 WeatherData weather{};
 AirData air{};
@@ -19,6 +20,72 @@ String ratesError;
 static SemaphoreHandle_t fetchMutex = nullptr;
 static uint32_t nextFetchAllowedMs = 0;
 static uint8_t fetchFailures = 0;
+
+static void cacheWeather() {
+  Preferences p;
+  p.begin("weather", false);
+  p.putBool("ok", weather.ok);
+  p.putFloat("temp", weather.temp);
+  p.putFloat("hum", weather.humidity);
+  p.putFloat("wind", weather.wind);
+  p.putInt("code", weather.code);
+  p.putFloat("tmax", weather.tmax);
+  p.putFloat("tmin", weather.tmin);
+  p.putInt("prob", weather.precipProb);
+  p.putFloat("rain", weather.rainMm);
+  p.putString("rise", weather.sunrise);
+  p.putString("set", weather.sunset);
+  p.end();
+}
+
+static void cacheAir() {
+  Preferences p;
+  p.begin("weather", false);
+  p.putBool("air_ok", air.ok);
+  p.putFloat("aqi", air.aqi);
+  p.putFloat("pm25", air.pm25);
+  p.end();
+}
+
+static void cacheRates() {
+  Preferences p;
+  p.begin("weather", false);
+  p.putBool("rates_ok", rates.ok);
+  p.putFloat("usd", rates.usd);
+  p.putFloat("eur", rates.eur);
+  p.putFloat("cny", rates.cny);
+  p.putString("rdate", rates.date);
+  p.end();
+}
+
+void dataCacheLoad() {
+  Preferences p;
+  p.begin("weather", true);
+  weather.ok = p.getBool("ok", false);
+  weather.temp = p.getFloat("temp", 0);
+  weather.humidity = p.getFloat("hum", 0);
+  weather.wind = p.getFloat("wind", 0);
+  weather.code = p.getInt("code", 0);
+  weather.tmax = p.getFloat("tmax", 0);
+  weather.tmin = p.getFloat("tmin", 0);
+  weather.precipProb = p.getInt("prob", 0);
+  weather.rainMm = p.getFloat("rain", 0);
+  weather.sunrise = p.getString("rise", "");
+  weather.sunset = p.getString("set", "");
+  air.ok = p.getBool("air_ok", false);
+  air.aqi = p.getFloat("aqi", 0);
+  air.pm25 = p.getFloat("pm25", 0);
+  rates.ok = p.getBool("rates_ok", false);
+  rates.usd = p.getFloat("usd", 0);
+  rates.eur = p.getFloat("eur", 0);
+  rates.cny = p.getFloat("cny", 0);
+  rates.date = p.getString("rdate", "");
+  p.end();
+  weather.fetchedAt = 0;
+  air.fetchedAt = 0;
+  rates.fetchedAt = 0;
+  weather.rainInMin = -1;
+}
 
 static void initWeatherDefaults() {
   weather.rainInMin = -1;
@@ -267,6 +334,7 @@ bool fetchWeather() {
   weather.rainInMin = -1;
   weather.ok = true;
   weather.fetchedAt = millis();
+  cacheWeather();
   weatherError = "";
   Serial.printf("[WX] wttr OK: temp=%.1f humidity=%.0f wind=%.1f rain=%.1f\n",
                 weather.temp, weather.humidity, weather.wind, weather.rainMm);
@@ -306,6 +374,7 @@ bool fetchAir() {
   air.pm25 = doc["current"]["pm2_5"] | 0.0f;
   air.ok = true;
   air.fetchedAt = millis();
+  cacheAir();
   airError = "";
   Serial.printf("[AQI] OK: AQI=%.0f PM2.5=%.1f\n", air.aqi, air.pm25);
   return true;
@@ -350,6 +419,7 @@ bool fetchRates() {
   if (rates.date.length() >= 10) rates.date = rates.date.substring(0, 10);
   rates.ok = true;
   rates.fetchedAt = millis();
+  cacheRates();
   ratesError = "";
   return true;
 }

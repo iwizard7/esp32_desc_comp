@@ -49,6 +49,7 @@ bool fetchWeather();
 bool fetchAir();
 bool fetchRates();
 bool fetchAllData(bool force = false);
+void dataCacheLoad();
 void applyTimezone();
 bool isNightNow();
 const char* wmoLabel(int code);
