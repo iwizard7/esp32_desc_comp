@@ -47,7 +47,8 @@ static String scanOptions() {
   String html;
   int n = WiFi.scanComplete();
   if (n < 0) {
-    n = WiFi.scanNetworks();
+    html += "<option value=''>— список сетей обновляется —</option>";
+    return html;
   }
   for (int i = 0; i < n; i++) {
     String ssid = WiFi.SSID(i);
@@ -321,10 +322,16 @@ static void handleForceAp() {
 
 #include <Update.h>
 
+static bool otaRejected = false;
+
 static void handleUpdatePost() {
   if (!authorized()) return;
   server.sendHeader("Connection", "close");
-  server.send(200, "text/plain; charset=utf-8", (Update.hasError()) ? "Ошибка OTA!" : "Успешно! Перезагрузка...");
+  if (otaRejected || Update.hasError()) {
+    server.send(413, "text/plain; charset=utf-8", "Ошибка OTA: файл слишком большой или повреждён");
+    return;
+  }
+  server.send(200, "text/plain; charset=utf-8", "Успешно! Перезагрузка...");
   delay(500);
   ESP.restart();
 }
@@ -333,15 +340,25 @@ static void handleUpdateUpload() {
   if (!authorized()) return;
   HTTPUpload& upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
+    otaRejected = upload.totalSize > 0x1C0000;
+    if (otaRejected) {
+      Serial.printf("[OTA] Rejected: %u bytes is larger than app slot\n", upload.totalSize);
+      displayMessage("OTA ошибка", "файл слишком большой");
+      return;
+    }
     displayMessage("OTA обновление", "прошивка...");
-    if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+    if (!Update.begin(upload.totalSize)) {
       Update.printError(Serial);
+      otaRejected = true;
     }
   } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (otaRejected) return;
     if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
       Update.printError(Serial);
+      otaRejected = true;
     }
   } else if (upload.status == UPLOAD_FILE_END) {
+    if (otaRejected) return;
     if (Update.end(true)) {
       displayMessage("OTA завершено", "перезагрузка");
     } else {
@@ -461,17 +478,19 @@ static void handleDiag() {
     "      g+=row('WMO код',d.wx_code);"
     "      g+=row('Мин/Макс',d.wx_tmin+'° / '+d.wx_tmax+'°');"
     "      g+=row('Осадки',d.wx_precip+'%');"
-    "      g+=row('Восход',d.wx_sunrise||'—');"
-    "      g+=row('Закат',d.wx_sunset||'—');"
-    "      g+=row('Данные получены',age(d.wx_age)+' назад');"
+     "      g+=row('Восход',d.wx_sunrise||'—');"
+     "      g+=row('Закат',d.wx_sunset||'—');"
+     "      g+=row('Данные получены',age(d.wx_age)+' назад');"
+     "      g+=row('Ошибка обновления',d.weatherError||'нет');"
     "    }"
     "    g+='</div>';"
     "    g+='<div class=card><h2>&#129481; Качество воздуха</h2>';"
     "    g+=row('Статус',badge(d.air_ok));"
     "    if(d.air_ok){"
     "      g+=row('AQI',d.air_aqi);"
-    "      g+=row('PM2.5',d.air_pm25+' мкг/м³');"
-    "      g+=row('Данные получены',age(d.air_age)+' назад');"
+     "      g+=row('PM2.5',d.air_pm25+' мкг/м³');"
+     "      g+=row('Данные получены',age(d.air_age)+' назад');"
+     "      g+=row('Ошибка обновления',d.airError||'нет');"
     "    }"
     "    g+='</div>';"
     "    g+='<div class=card><h2>&#128176; Курсы ЦБ</h2>';"
@@ -480,8 +499,9 @@ static void handleDiag() {
     "      g+=row('USD',d.rates_usd+'&nbsp;₽');"
     "      g+=row('EUR',d.rates_eur+'&nbsp;₽');"
     "      g+=row('CNY',d.rates_cny+'&nbsp;₽');"
-    "      g+=row('Дата',d.rates_date);"
-    "      g+=row('Данные получены',age(d.rates_age)+' назад');"
+     "      g+=row('Дата',d.rates_date);"
+     "      g+=row('Данные получены',age(d.rates_age)+' назад');"
+     "      g+=row('Ошибка обновления',d.ratesError||'нет');"
     "    }"
     "    g+='</div>';"
     "    g+='<div class=card><h2>&#9888;&#65039; Последняя ошибка</h2>';"
