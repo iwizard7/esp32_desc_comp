@@ -117,7 +117,7 @@ void displayClock() {
     char line[40];
     snprintf(line, sizeof(line), "%s %d %s", wdRu(t.tm_wday), t.tm_mday, monRu(t.tm_mon));
     u8g2.setFont(u8g2_font_6x12_t_cyrillic);
-    u8g2.drawUTF8(0, 32, line);
+    drawCentered(line, 32);
   }
   sendDisplayBuffer();
 }
