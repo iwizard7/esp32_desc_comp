@@ -227,8 +227,7 @@ void displaySun() {
   } else {
     u8g2.drawUTF8(0, 14, "нет солнца");
   }
-   u8g2.drawUTF8(0, 32, shortCity().c_str());
-  sendDisplayBuffer();
+   sendDisplayBuffer();
 }
 
 void displayStatus() {
