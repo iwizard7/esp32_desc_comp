@@ -324,7 +324,61 @@ uint32_t displayCurrentDurationMs() {
   return (uint32_t)sec * 1000UL;
 }
 
+static String layoutValue(uint8_t type) {
+  time_t now = time(nullptr);
+  struct tm t;
+  localtime_r(&now, &t);
+  char line[80];
+  switch (type) {
+    case LAYOUT_TIME: snprintf(line, sizeof(line), "%02d:%02d", t.tm_hour, t.tm_min); return line;
+    case LAYOUT_DATE: snprintf(line, sizeof(line), "%s %d %s", wdRu(t.tm_wday), t.tm_mday, monRu(t.tm_mon)); return line;
+    case LAYOUT_CITY: return shortCity();
+    case LAYOUT_TEMPERATURE: snprintf(line, sizeof(line), "%+.0f°", weather.temp); return line;
+    case LAYOUT_CONDITION: return wmoShortLabel(weather.code);
+    case LAYOUT_HUMIDITY_WIND: snprintf(line, sizeof(line), "%d%%  %.0fм/с", (int)weather.humidity, weather.wind); return line;
+    case LAYOUT_FORECAST: snprintf(line, sizeof(line), "Сегодня %+.0f...%+.0f°", weather.tmin, weather.tmax); return line;
+    case LAYOUT_PRECIP: snprintf(line, sizeof(line), "Дождь %d%% %.1fмм", weather.precipProb, weather.rainMm); return line;
+    case LAYOUT_RATES:
+      snprintf(line, sizeof(line), "USD %.2f  EUR %.2f  CNY %.2f", rates.usd, rates.eur, rates.cny); return line;
+    case LAYOUT_AQI: snprintf(line, sizeof(line), "AQI %.0f  %s", air.aqi, aqiHint(air.aqi)); return line;
+    case LAYOUT_PM25: snprintf(line, sizeof(line), "PM2.5 %.1f мкг/м3", air.pm25); return line;
+    case LAYOUT_SUNRISE: return "Восход  " + weather.sunrise;
+    case LAYOUT_SUNSET: return "Закат   " + weather.sunset;
+    case LAYOUT_INDOOR: snprintf(line, sizeof(line), "%+.1f°C", indoor.temp); return line;
+    case LAYOUT_STATUS: return WiFi.localIP().toString();
+    default: return "";
+  }
+}
+
+static void setLayoutFont(uint8_t font) {
+  if (font == 0) u8g2.setFont(u8g2_font_5x8_t_cyrillic);
+  else if (font == 2) u8g2.setFont(u8g2_font_logisoso16_tn);
+  else if (font == 3) u8g2.setFont(u8g2_font_logisoso24_tn);
+  else u8g2.setFont(u8g2_font_6x12_t_cyrillic);
+}
+
+static bool displayRenderLayout(uint8_t id) {
+  if (id >= SLIDE_COUNT || !settings.layouts[id].custom) return false;
+  u8g2.clearBuffer();
+  for (const LayoutElement& element : settings.layouts[id].elements) {
+    if (!element.enabled) continue;
+    String value = layoutValue(element.type);
+    if (!value.length()) continue;
+    setLayoutFont(element.font);
+    value = fitText(value, 128);
+    int width = u8g2.getUTF8Width(value.c_str());
+    int x = element.x;
+    if (element.align == 1) x -= width / 2;
+    else if (element.align == 2) x -= width;
+    if (x < 0) x = 0;
+    u8g2.drawUTF8(x, element.y, value.c_str());
+  }
+  sendDisplayBuffer();
+  return true;
+}
+
 void renderSlideById(uint8_t id) {
+  if (displayRenderLayout(id)) return;
   switch (id) {
     case SLIDE_CLOCK: displayClock(); break;
     case SLIDE_WEATHER: displayWeather(); break;

@@ -6,6 +6,7 @@
 #include <DNSServer.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <ArduinoJson.h>
 
 static DNSServer dns;
 static WebServer server(80);
@@ -178,8 +179,11 @@ static String page() {
          "• 1 клик: следующий слайд<br>"
          "• 2 клика: пауза / продолжение авторотации<br>"
          "• Удержание 3 сек: запуск точки доступа AP</small></p>"
-         "<div class=card><p><b>Диагностика</b></p>"
-         "<a href=/diag style='display:block;padding:10px;background:#1f6feb;color:#fff;"
+          "<div class=card><p><b>Диагностика</b></p>"
+          "<a href=/layout style='display:block;padding:10px;background:#7c3aed;color:#fff;"
+          "border-radius:8px;text-align:center;text-decoration:none;font-weight:600;margin-bottom:8px'>"
+          "&#9638; Редактор макетов OLED</a>"
+          "<a href=/diag style='display:block;padding:10px;background:#1f6feb;color:#fff;"
          "border-radius:8px;text-align:center;text-decoration:none;font-weight:600'>"
          "&#128269; Открыть панель диагностики</a></div>"
          "</main></body></html>");
@@ -189,6 +193,71 @@ static String page() {
 static void handleRoot() {
   if (!authorized()) return;
   server.send(200, "text/html; charset=utf-8", page());
+}
+
+static void handleLayoutPage() {
+  if (!authorized()) return;
+  String html;
+  html.reserve(9000);
+  html += F(R"HTML(<!doctype html><html lang=ru><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>OLED Layout</title>
+<style>body{font:16px system-ui;background:#111;color:#eee;margin:0}main{max-width:1050px;margin:auto;padding:20px}.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.toolbar select,button,input{font:16px;padding:9px;border-radius:7px;border:1px solid #555;background:#222;color:#eee}button{background:#2563eb;border:0;cursor:pointer}.editor{display:flex;gap:24px;align-items:flex-start;margin-top:20px}.oled{width:512px;height:128px;background:#000;border:4px solid #555;position:relative;touch-action:none;image-rendering:pixelated}.oled .el{position:absolute;color:#fff;white-space:nowrap;border:1px dashed #555;cursor:move;line-height:1}.oled .selected{border-color:#60a5fa;background:#ffffff22}.side{min-width:280px;background:#1a1a1a;border-radius:10px;padding:14px}.side label{display:block;margin:12px 0 4px}.hint{color:#aaa;font-size:.9rem;margin-top:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.grid input,.grid select{width:100%;box-sizing:border-box}</style>
+<main><h1>Редактор OLED 128×32</h1><div class=toolbar><label>Экран <select id=screen></select></label><button onclick=loadLayout()>Загрузить</button><button onclick=saveLayout()>Сохранить макет</button><button onclick=resetLayout()>Сбросить</button><a href=/ style="color:#9cc">← настройки</a></div>
+<div class=editor><div id=oled class=oled></div><div class=side><b id=selectedName>Элемент не выбран</b><div class=grid><label>X<input id=x type=number min=0 max=127></label><label>Y<input id=y type=number min=1 max=32></label><label>Шрифт<select id=font><option value=0>маленький 5×8</option><option value=1>обычный 6×12</option><option value=2>крупный 16px</option><option value=3>очень крупный 24px</option></select></label><label>Выравнивание<select id=align><option value=0>слева</option><option value=1>центр</option><option value=2>справа</option></select></label></div><label><input id=enabled type=checkbox> Показывать элемент</label><p class=hint>Перетаскивайте элементы мышью по увеличенному экрану. X/Y — координаты реального OLED. Текст на экране остаётся динамическим.</p></div></div></main>
+<script>const names=['Время','Дата','Город','Температура','Состояние','Влажность/ветер','Прогноз','Осадки','Курсы валют','AQI','PM2.5','Восход','Закат','Комнатная температура','Статус'];const screens=['Часы','Погода','Прогноз','Дождь','Курсы','AQI','Восход/закат','Комната','Статус'];let data=[],sel=-1,drag=false;const $=id=>document.getElementById(id);screens.forEach((s,i)=>$('screen').add(new Option(s,i)));function view(){let o=$('oled');o.innerHTML='';data.forEach((e,i)=>{if(!e.enabled)return;let d=document.createElement('div');d.className='el '+(i===sel?'selected':'');d.textContent=names[e.type]||'?';d.style.left=(e.x*4)+'px';d.style.top=((e.y-e.font*3)*4)+'px';d.style.fontSize=([8,12,16,22][e.font]||12)+'px';d.onclick=()=>select(i);d.onpointerdown=q=>{select(i);drag=true;d.setPointerCapture(q.pointerId)};d.onpointermove=q=>{if(!drag||sel!==i)return;let r=o.getBoundingClientRect();data[i].x=Math.max(0,Math.min(127,Math.round((q.clientX-r.left)/4)));data[i].y=Math.max(1,Math.min(32,Math.round((q.clientY-r.top)/4)+data[i].font*3));sync()};d.onpointerup=()=>drag=false;o.appendChild(d)});$('selectedName').textContent=sel<0?'Элемент не выбран':names[data[sel].type]||'Элемент'}function select(i){sel=i;sync();view()}function sync(){if(sel<0)return;let e=data[sel];$('x').value=e.x;$('y').value=e.y;$('font').value=e.font;$('align').value=e.align;$('enabled').checked=!!e.enabled}['x','y','font','align','enabled'].forEach(id=>$(id).oninput=()=>{if(sel<0)return;let e=data[sel];e.x=+$('x').value;e.y=+$('y').value;e.font=+$('font').value;e.align=+$('align').value;e.enabled=$('enabled').checked?1:0;view()});async function loadLayout(){let r=await fetch('/api/layout?screen='+$('screen').value);let j=await r.json();data=j.elements||[];sel=-1;view()}async function saveLayout(){await fetch('/api/layout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({screen:+$('screen').value,elements:data})});alert('Макет сохранён');}async function resetLayout(){await fetch('/api/layout/reset',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'screen='+$('screen').value});await loadLayout()}$('screen').onchange=loadLayout;loadLayout();</script></html>)HTML");
+  server.send(200, "text/html; charset=utf-8", html);
+}
+
+static void handleLayoutGet() {
+  if (!authorized()) return;
+  int screen = server.arg("screen").toInt();
+  if (screen < 0 || screen >= SLIDE_COUNT) screen = SLIDE_CLOCK;
+  JsonDocument doc;
+  doc["screen"] = screen;
+  JsonArray elements = doc["elements"].to<JsonArray>();
+  for (const LayoutElement& e : settings.layouts[screen].elements) {
+    JsonObject out = elements.add<JsonObject>();
+    out["type"] = e.type; out["font"] = e.font; out["align"] = e.align;
+    out["enabled"] = e.enabled; out["x"] = e.x; out["y"] = e.y;
+  }
+  String response; serializeJson(doc, response);
+  server.send(200, "application/json", response);
+}
+
+static void handleLayoutSave() {
+  if (!authorized()) return;
+  JsonDocument doc;
+  if (deserializeJson(doc, server.arg("plain"))) {
+    server.send(400, "text/plain", "bad json"); return;
+  }
+  int screen = doc["screen"] | -1;
+  JsonArray elements = doc["elements"].as<JsonArray>();
+  if (screen < 0 || screen >= SLIDE_COUNT || elements.isNull()) {
+    server.send(400, "text/plain", "bad layout"); return;
+  }
+  settings.layouts[screen].custom = 1;
+  int i = 0;
+  for (JsonObject in : elements) {
+    if (i >= LAYOUT_MAX_ELEMENTS) break;
+    LayoutElement& e = settings.layouts[screen].elements[i++];
+    e.type = min(14, (int)(in["type"] | 0));
+    e.font = min(3, (int)(in["font"] | 1));
+    e.align = min(2, (int)(in["align"] | 0));
+    e.enabled = (in["enabled"] | 0) ? 1 : 0;
+    e.x = constrain((int)(in["x"] | 0), 0, 127);
+    e.y = constrain((int)(in["y"] | 1), 1, 32);
+  }
+  settingsSave(); displayInvalidate();
+  server.send(200, "text/plain", "OK");
+}
+
+static void handleLayoutReset() {
+  if (!authorized()) return;
+  int screen = server.arg("screen").toInt();
+  if (screen < 0 || screen >= SLIDE_COUNT) screen = SLIDE_CLOCK;
+  settingsResetLayout(screen);
+  settingsSave(); displayInvalidate();
+  server.send(200, "text/plain", "OK");
 }
 
 static void handleNotFound() {
@@ -540,7 +609,11 @@ static void registerRoutes() {
   server.on("/update", HTTP_POST, handleUpdatePost, handleUpdateUpload);
   server.on("/api/status", HTTP_GET, handleApiStatus);
   server.on("/api/fetch", HTTP_GET, handleApiFetch);
-  server.on("/diag", HTTP_GET, handleDiag);
+   server.on("/diag", HTTP_GET, handleDiag);
+  server.on("/layout", HTTP_GET, handleLayoutPage);
+  server.on("/api/layout", HTTP_GET, handleLayoutGet);
+  server.on("/api/layout", HTTP_POST, handleLayoutSave);
+  server.on("/api/layout/reset", HTTP_POST, handleLayoutReset);
   server.on("/generate_204", handleRoot);
   server.on("/gen_204", handleRoot);
   server.on("/hotspot-detect.html", handleRoot);

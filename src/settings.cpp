@@ -5,6 +5,48 @@
 Settings settings;
 static Preferences prefs;
 
+static void layoutClear(ScreenLayout& layout) {
+  layout.custom = 0;
+  for (int i = 0; i < LAYOUT_MAX_ELEMENTS; i++) {
+    layout.elements[i] = {0, 1, 0, 0, 0, 0};
+  }
+}
+
+static void layoutSet(ScreenLayout& layout, int index, uint8_t type, uint8_t font,
+                      uint8_t align, int8_t x, int8_t y) {
+  if (index >= LAYOUT_MAX_ELEMENTS) return;
+  layout.elements[index] = {type, font, align, 1, x, y};
+}
+
+void settingsDefaultsLayouts() {
+  for (int i = 0; i < SLIDE_COUNT; i++) layoutClear(settings.layouts[i]);
+  layoutSet(settings.layouts[SLIDE_CLOCK], 0, LAYOUT_TIME, 3, 1, 64, 24);
+  layoutSet(settings.layouts[SLIDE_CLOCK], 1, LAYOUT_DATE, 1, 1, 64, 32);
+  layoutSet(settings.layouts[SLIDE_WEATHER], 0, LAYOUT_TEMPERATURE, 2, 0, 0, 18);
+  layoutSet(settings.layouts[SLIDE_WEATHER], 1, LAYOUT_CONDITION, 1, 0, 56, 12);
+  layoutSet(settings.layouts[SLIDE_WEATHER], 2, LAYOUT_HUMIDITY_WIND, 1, 0, 0, 32);
+  layoutSet(settings.layouts[SLIDE_FORECAST], 0, LAYOUT_FORECAST, 1, 0, 0, 13);
+  layoutSet(settings.layouts[SLIDE_FORECAST], 1, LAYOUT_PRECIP, 1, 0, 0, 29);
+  layoutSet(settings.layouts[SLIDE_RATES], 0, LAYOUT_RATES, 1, 0, 0, 10);
+  layoutSet(settings.layouts[SLIDE_AIR], 0, LAYOUT_AQI, 2, 0, 0, 21);
+  layoutSet(settings.layouts[SLIDE_AIR], 1, LAYOUT_PM25, 1, 0, 0, 32);
+  layoutSet(settings.layouts[SLIDE_SUN], 0, LAYOUT_SUNRISE, 1, 0, 0, 14);
+  layoutSet(settings.layouts[SLIDE_SUN], 1, LAYOUT_SUNSET, 1, 0, 0, 31);
+  layoutSet(settings.layouts[SLIDE_INDOOR], 0, LAYOUT_INDOOR, 2, 0, 0, 20);
+  layoutSet(settings.layouts[SLIDE_STATUS], 0, LAYOUT_STATUS, 1, 0, 0, 10);
+}
+
+void settingsResetLayout(uint8_t screen) {
+  if (screen >= SLIDE_COUNT) return;
+  ScreenLayout backup[SLIDE_COUNT];
+  memcpy(backup, settings.layouts, sizeof(backup));
+  settingsDefaultsLayouts();
+  settings.layouts[screen] = settings.layouts[screen];
+  for (int i = 0; i < SLIDE_COUNT; i++) {
+    if (i != screen) settings.layouts[i] = backup[i];
+  }
+}
+
 uint8_t clampSlideSec(int v) {
   if (v < 3) return 3;
   if (v > 120) return 120;
@@ -24,6 +66,7 @@ void settingsDefaultsSlides() {
 
 void settingsLoad() {
   settingsDefaultsSlides();
+  settingsDefaultsLayouts();
   prefs.begin("desk", true);
   settings.ssid = prefs.getString("ssid", "");
   settings.pass = prefs.getString("pass", "");
@@ -68,6 +111,8 @@ void settingsLoad() {
       }
     }
   }
+  size_t layoutBytes = prefs.getBytes("layouts", settings.layouts, sizeof(settings.layouts));
+  if (layoutBytes != sizeof(settings.layouts)) settingsDefaultsLayouts();
   bool any = false;
   for (int i = 0; i < SLIDE_COUNT; i++) {
     if (settings.slideOn[i]) any = true;
@@ -103,6 +148,7 @@ void settingsSave() {
   prefs.putBool("pshift", settings.pixelShift);
   prefs.putBool("bme", settings.bmeEnabled);
   prefs.putBytes("scfg", blob, sizeof(blob));
+  prefs.putBytes("layouts", settings.layouts, sizeof(settings.layouts));
   prefs.end();
 }
 
