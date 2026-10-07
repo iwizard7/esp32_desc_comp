@@ -73,6 +73,7 @@ void settingsLoad() {
   settings.city = prefs.getString("city", "Moscow");
   settings.cityLabel = prefs.getString("clabel", "Москва");
   settings.timezone = prefs.getString("tz", "Europe/Moscow");
+  settings.timezoneAuto = prefs.getBool("tz_auto", true);
   settings.webPass = prefs.getString("webpass", "deskadmin");
   settings.lat = prefs.getFloat("lat", 55.7558f);
   settings.lon = prefs.getFloat("lon", 37.6173f);
@@ -134,6 +135,7 @@ void settingsSave() {
   prefs.putString("city", settings.city);
   prefs.putString("clabel", settings.cityLabel);
   prefs.putString("tz", settings.timezone);
+  prefs.putBool("tz_auto", settings.timezoneAuto);
   prefs.putString("webpass", settings.webPass);
   prefs.putFloat("lat", settings.lat);
   prefs.putFloat("lon", settings.lon);

@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#define FW_VERSION "0.8.0"
+#define FW_VERSION "0.8.1"
 
 #define SLIDE_CLOCK 0
 #define SLIDE_WEATHER 1
@@ -58,6 +58,7 @@ struct Settings {
   float lat;
   float lon;
   int utcOffset;
+  bool timezoneAuto;
   uint16_t intervalSec;  // default duration for new/empty rows
   uint8_t contrast;
   uint8_t nightContrast;

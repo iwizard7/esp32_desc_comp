@@ -11,6 +11,7 @@
 static DNSServer dns;
 static WebServer server(80);
 static bool apActive = false;
+static uint32_t restartAtMs = 0;
 static String apSsid = "DeskC3";
 static const char* AP_PASS = "desk1234";
 
@@ -66,6 +67,29 @@ static String scanOptions() {
 
 static bool chk(uint8_t id) { return id < SLIDE_COUNT && settings.slideOn[id]; }
 
+static String timezoneOptions() {
+  String html;
+  for (int minutes = -12 * 60; minutes <= 14 * 60; minutes += 30) {
+    int seconds = minutes * 60;
+    int absMinutes = abs(minutes);
+    String label = "UTC";
+    if (minutes > 0) label += "+";
+    else if (minutes < 0) label += "-";
+    if (minutes != 0) {
+      label += String(absMinutes / 60);
+      if (absMinutes % 60) {
+        label += ":";
+        if (absMinutes % 60 < 10) label += "0";
+        label += String(absMinutes % 60);
+      }
+    }
+    html += "<option value='" + String(seconds) + "'";
+    if (!settings.timezoneAuto && settings.utcOffset == seconds) html += " selected";
+    html += ">" + label + "</option>";
+  }
+  return html;
+}
+
 static String page() {
   String s;
   s.reserve(6000);
@@ -96,6 +120,11 @@ static String page() {
     s += WiFi.localIP().toString();
     s += "<br>Город: ";
     s += htmlEscape(settings.cityLabel);
+    s += "<br>Часовой пояс: ";
+    s += settings.timezoneAuto ? "автоматически по городу (UTC" : "вручную (UTC";
+    if (settings.utcOffset >= 0) s += "+";
+    s += String(settings.utcOffset / 3600);
+    s += ")";
     s += "</div>";
   } else {
     s += F("<div class=card>Режим настройки. Подключитесь к точке доступа "
@@ -110,7 +139,14 @@ static String page() {
   s += F("<p>Пароль веб-интерфейса</p><input name=webpass type=password placeholder='admin пароль'><small>Логин: admin. Пустое поле сохраняет текущий пароль.</small>");
   s += F("<p>Город (погода, время, дата)</p><input name=city required value='");
   s += htmlEscape(settings.city);
-  s += F("'><p>Интервал слайдов по умолчанию, сек (3–120)</p><input name=interval type=number min=3 max=120 value='");
+  s += F("'><p>Часовой пояс</p><select name=tzmode><option value='auto'");
+  if (settings.timezoneAuto) s += " selected";
+  s += F(">автоматически по выбранному городу</option><option value='manual'");
+  if (!settings.timezoneAuto) s += " selected";
+  s += F(">выбрать вручную</option></select><select name=utc_offset>");
+  s += timezoneOptions();
+  s += F("</select><small>Для Бийска: UTC+07:00. При автоматическом режиме пояс обновляется по городу.</small>");
+  s += F("<p>Интервал слайдов по умолчанию, сек (3–120)</p><input name=interval type=number min=3 max=120 value='");
   s += String(settings.intervalSec);
   s += F("'><p>Яркость OLED день (0–255)</p><input name=contrast type=number min=0 max=255 value='");
   s += String(settings.contrast);
@@ -171,11 +207,7 @@ static String page() {
          "<form method=POST action=/ap><button class=alt type=submit>Только точка доступа</button></form>"
          "<form method=POST action=/reset onsubmit=\"return confirm('Сбросить все настройки?')\">"
          "<button class=danger type=submit>Заводской сброс</button></form>"
-         "<div class=card><p><b>Обновление прошивки по воздуху (OTA)</b></p>"
-         "<form method=POST action=/update enctype=multipart/form-data>"
-         "<input type=file name=firmware accept='.bin' required style='margin-bottom:8px'>"
-         "<button type=submit class=alt>Прошить .bin</button></form></div>"
-         "<p><small><b>Кнопка BOOT (GPIO9):</b><br>"
+          "<p><small><b>Кнопка BOOT (GPIO9):</b><br>"
          "• 1 клик: следующий слайд<br>"
          "• 2 клика: пауза / продолжение авторотации<br>"
          "• Удержание 3 сек: запуск точки доступа AP</small></p>"
@@ -323,6 +355,16 @@ static void handleSave() {
   city.trim();
   if (city.length()) settings.city = city;
 
+  settings.timezoneAuto = server.arg("tzmode") != "manual";
+  if (!settings.timezoneAuto) {
+    int offset = server.arg("utc_offset").toInt();
+    if (offset < -12 * 3600) offset = -12 * 3600;
+    if (offset > 14 * 3600) offset = 14 * 3600;
+    settings.utcOffset = offset;
+    settings.timezone = "";
+  }
+  applyTimezone();
+
   int ival = server.arg("interval").toInt();
   if (ival < 3) ival = 3;
   if (ival > 120) ival = 120;
@@ -351,18 +393,19 @@ static void handleSave() {
   displaySetContrast(settings.contrast);
   displaySetFlip(settings.flip);
   displayRebuildPlaylist();
-  displayMessage("Сохранено", "геокод города...", settings.city.c_str());
-
-  if (WiFi.status() == WL_CONNECTED) {
-    fetchAllData(true, true);
-  }
+  // Do not perform network requests inside the HTTP handler. Geocoding and
+  // data refresh can take tens of seconds or time out, leaving the browser
+  // with a broken /save response and preventing the reboot. The normal boot
+  // flow performs the refresh asynchronously after Wi-Fi reconnects.
+  displayMessage("Сохранено", "перезагрузка...", settings.city.c_str());
 
   server.send(200, "text/html; charset=utf-8",
               F("<!DOCTYPE html><meta charset=utf-8><meta http-equiv=refresh content='3;url=/'>"
                 "<body style='background:#111;color:#eee;font-family:sans-serif;padding:24px'>"
                 "Сохранено. Плата перезагрузится...</body>"));
-  delay(400);
-  ESP.restart();
+  // Let WebServer flush the response before restarting. Restarting directly
+  // from this handler often leaves the browser with an empty /save response.
+  restartAtMs = millis() + 1500;
 }
 
 static void handleReset() {
@@ -387,53 +430,6 @@ static void handleForceAp() {
   server.send(200, "text/plain; charset=utf-8", "AP mode, reboot");
   delay(300);
   ESP.restart();
-}
-
-#include <Update.h>
-
-static bool otaRejected = false;
-
-static void handleUpdatePost() {
-  if (!authorized()) return;
-  server.sendHeader("Connection", "close");
-  if (otaRejected || Update.hasError()) {
-    server.send(413, "text/plain; charset=utf-8", "Ошибка OTA: файл слишком большой или повреждён");
-    return;
-  }
-  server.send(200, "text/plain; charset=utf-8", "Успешно! Перезагрузка...");
-  delay(500);
-  ESP.restart();
-}
-
-static void handleUpdateUpload() {
-  if (!authorized()) return;
-  HTTPUpload& upload = server.upload();
-  if (upload.status == UPLOAD_FILE_START) {
-    otaRejected = upload.totalSize > 0x1C0000;
-    if (otaRejected) {
-      Serial.printf("[OTA] Rejected: %u bytes is larger than app slot\n", upload.totalSize);
-      displayMessage("OTA ошибка", "файл слишком большой");
-      return;
-    }
-    displayMessage("OTA обновление", "прошивка...");
-    if (!Update.begin(upload.totalSize)) {
-      Update.printError(Serial);
-      otaRejected = true;
-    }
-  } else if (upload.status == UPLOAD_FILE_WRITE) {
-    if (otaRejected) return;
-    if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-      Update.printError(Serial);
-      otaRejected = true;
-    }
-  } else if (upload.status == UPLOAD_FILE_END) {
-    if (otaRejected) return;
-    if (Update.end(true)) {
-      displayMessage("OTA завершено", "перезагрузка");
-    } else {
-      displayMessage("OTA ошибка", "отмена");
-    }
-  }
 }
 
 static bool httpStarted = false;
@@ -606,7 +602,6 @@ static void registerRoutes() {
   server.on("/reset", HTTP_POST, handleReset);
   server.on("/rescan", HTTP_POST, handleRescan);
   server.on("/ap", HTTP_POST, handleForceAp);
-  server.on("/update", HTTP_POST, handleUpdatePost, handleUpdateUpload);
   server.on("/api/status", HTTP_GET, handleApiStatus);
   server.on("/api/fetch", HTTP_GET, handleApiFetch);
    server.on("/diag", HTTP_GET, handleDiag);
@@ -653,4 +648,8 @@ void portalStartConfigAp() {
 void portalLoop() {
   if (apActive) dns.processNextRequest();
   server.handleClient();
+  if (restartAtMs && (int32_t)(millis() - restartAtMs) >= 0) {
+    restartAtMs = 0;
+    ESP.restart();
+  }
 }

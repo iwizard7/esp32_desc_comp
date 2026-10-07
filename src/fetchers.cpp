@@ -206,18 +206,17 @@ static void urlEncode(const String& in, String& out) {
 }
 
 void applyTimezone() {
-  if (settings.timezone.length()) {
-    setenv("TZ", settings.timezone.c_str(), 1);
-    tzset();
-    return;
-  }
-  int h = settings.utcOffset / 3600;
-  char buf[16];
-  if (h >= 0) {
-    snprintf(buf, sizeof(buf), "UTC-%d", h);
-  } else {
-    snprintf(buf, sizeof(buf), "UTC+%d", -h);
-  }
+  // ESP32 does not include an IANA zoneinfo database. Passing values such as
+  // "Asia/Barnaul" to TZ therefore silently falls back to UTC. Use the
+  // POSIX fixed-offset form instead (its sign is intentionally inverted).
+  int offset = settings.utcOffset;
+  int minutes = abs(offset) / 60;
+  char buf[20];
+  int hours = minutes / 60;
+  int mins = minutes % 60;
+  char sign = offset >= 0 ? '-' : '+';
+  if (mins) snprintf(buf, sizeof(buf), "UTC%c%d:%02d", sign, hours, mins);
+  else snprintf(buf, sizeof(buf), "UTC%c%d", sign, hours);
   setenv("TZ", buf, 1);
   tzset();
 }
@@ -251,8 +250,10 @@ bool geocodeCity(const String& city) {
   settings.lat = r["latitude"] | settings.lat;
   settings.lon = r["longitude"] | settings.lon;
   settings.cityLabel = r["name"] | city;
-  settings.timezone = r["timezone"] | settings.timezone;
-  settings.utcOffset = r["utc_offset_seconds"] | settings.utcOffset;
+  if (settings.timezoneAuto) {
+    settings.timezone = r["timezone"] | settings.timezone;
+    settings.utcOffset = r["utc_offset_seconds"] | settings.utcOffset;
+  }
   settings.city = city;
   applyTimezone();
   geoError = "";
